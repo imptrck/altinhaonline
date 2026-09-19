@@ -273,6 +273,9 @@ const LANCES = [
   { nome:'Pedalada',    dif:2, len:2, ns:[[0,'peE'],[.5,'peD'],[1,'peE'],[1.5,'peD']] },
   { nome:'Rolinho',     dif:2, len:2, ns:[[0,'peD'],[.5,'peD'],[1,'peD'],[1.5,'peD']] },
   { nome:'Chapéu',      dif:2, len:4, ns:[[0,'cabeca'],[1,'cabeca'],[2,'peE']] },
+  { nome:'Matou no pé', dif:2, len:6, ns:[[0,'peE'],[1,'peD'],[2,'peE',{segurar:2,tipo:'matar'}]] },
+  { nome:'Matou na coxa',dif:2, len:6, ns:[[0,'peD'],[1,'peE'],[2,'coxaD',{segurar:2,tipo:'matar'}]] },
+  { nome:'Volta ao mundo', dif:3, len:6, ns:[[0,'peD'],[1,'peE'],[2,'peD',{segurar:2,tipo:'giro'}]] },
   { nome:'Ziguezague',  dif:3, len:4, ns:[[0,'peE'],[.75,'peD'],[1.5,'coxaE'],[2.25,'coxaD'],[3,'cabeca']] },
   { nome:'Malabarismo', dif:3, len:4, ns:[[0,'peE'],[.5,'coxaE'],[1,'cabeca'],[1.5,'coxaD'],
                                           [2,'peD'],[2.5,'coxaD'],[3,'cabeca'],[3.5,'coxaE']] },
@@ -287,11 +290,23 @@ function gerar(ate) {
     if (!pool.length) pool = LANCES;
     const l = pool[(Math.random() * pool.length) | 0];
     const id = ++idLance;
-    infoLance[id] = { nome:l.nome, dif:l.dif, total:l.ns.length, limpos:0, sujo:false };
-    l.ns.forEach(function (par, i) {
-      notas.push({ beat: proxB + par[0], parte: par[1], lance: id,
-                   ultima: i === l.ns.length - 1, julgada: false, dx: 0 });
+    infoLance[id] = { nome:l.nome, dif:l.dif, total:0, limpos:0, sujo:false };
+    const doLance = [];
+    l.ns.forEach(function (par) {
+      const extra = par[2] || null;
+      const n = { beat: proxB + par[0], parte: par[1], lance: id,
+                  ultima: false, julgada: false, dx: 0 };
+      if (extra && extra.segurar) { n.segurar = extra.segurar; n.tipo = extra.tipo || 'matar'; }
+      doLance.push(n);
+      // toda nota longa ganha a companheira de SOLTAR, no mesmo lugar do corpo
+      if (n.segurar) {
+        doLance.push({ beat: n.beat + n.segurar, parte: n.parte, lance: id, solta: true,
+                       tipo: n.tipo, ultima: false, julgada: false, dx: 0 });
+      }
     });
+    doLance[doLance.length - 1].ultima = true;
+    infoLance[id].total = doLance.length;
+    doLance.forEach(function (n) { notas.push(n); });
     proxB += l.len;
   }
 }
@@ -322,6 +337,7 @@ let gradBola = null, ultimoQuadro = 0, dtQuadro = 0.016;
 // Sem isso a bola teleporta de lado a cada toque: o trecho novo da parabola
 // ja comeca na deriva nova enquanto a bola acabou de chegar na antiga.
 let derivaVis = 0, pesoVis = 0;
+let segurando = null;   // { parte, tipo, de, ate } enquanto a bola esta presa
 const perseguir = (de, para, taxa) => de + (para - de) * (1 - Math.exp(-dtQuadro * taxa));
 let ultimoJulg = null;
 
@@ -340,6 +356,12 @@ function bolaNaParabola(b) {
   const p0 = posParte(a.parte, a.dx);
   const p1 = posParte(c.parte, c.julgada ? c.dx : derivaVis);
   const dt = c.beat - a.beat;
+  // bola morta: fica pousada no corpo em vez de descrever parabola
+  if (a.segurar && a.tipo === 'matar' && c.solta) {
+    const assenta = Math.exp(-(b - a.beat) * 9) * 7;
+    return { x: p0.x + (p1.x - p0.x) * clamp((b - a.beat) / dt, 0, 1),
+             y: p0.y - 14 - assenta };
+  }
   const u = clamp((b - a.beat) / dt, 0, 1);
   const arco = Math.min(300, 82 * Math.pow(dt, 1.4));
   return {
@@ -388,9 +410,10 @@ function faiscar(p, cor, n) {
 }
 
 function pressionar(parte) {
-  if (!rodando) return;
+  if (!rodando || segurando) return;
   const alvo = notaPendente();
   if (!alvo) return;
+  if (alvo.solta) { toqueNoVazio(); return; }        // era pra SOLTAR, nao apertar
   const errMs = (batidaJulg() - alvo.beat) * SPB * 1000;
 
   if (errMs < -JAN.ok) { toqueNoVazio(); return; }   // chutou cedo demais
@@ -401,7 +424,32 @@ function pressionar(parte) {
     infoLance[alvo.lance].sujo = true;
     return;
   }
+  julgar(alvo, errMs);
+  if (alvo.segurar) {
+    segurando = { parte: parte, tipo: alvo.tipo, de: alvo.beat, ate: alvo.beat + alvo.segurar };
+  }
+}
 
+// soltar a tecla: so vale se a nota pendente for a companheira de SOLTAR
+function soltar(parte) {
+  if (!rodando || !segurando || parte !== segurando.parte) return;
+  const alvo = notaPendente();
+  const err = alvo && alvo.solta ? (batidaJulg() - alvo.beat) * SPB * 1000 : -9999;
+  segurando = null;
+  if (!alvo || !alvo.solta || err < -JAN.ok) {
+    if (alvo) infoLance[alvo.lance].sujo = true;
+    queda('soltou cedo');
+    return;
+  }
+  julgar(alvo, err);
+  const inf = infoLance[alvo.lance];
+  if (!inf.sujo) {
+    pontos += 500;
+    anuncio = { txt: alvo.tipo === 'giro' ? 'Volta ao mundo' : 'Matou', b0: batidaVisual() };
+  }
+}
+
+function julgar(alvo, errMs) {
   const abs = Math.abs(errMs);
   const q = abs <= JAN.perf ? 'perf' : abs <= JAN.bom ? 'bom' : 'ok';
   const amort = q === 'perf' ? 0.30 : q === 'bom' ? 0.68 : 0.93;
@@ -438,6 +486,8 @@ function pressionar(parte) {
   if (Math.abs(deriva) > DERIVA_MAX) queda('bola longe demais');
 }
 
+const parada = () => segurando && segurando.tipo === 'matar';
+
 function toqueNoVazio() {
   deriva += (deriva >= 0 ? 1 : -1) * 26;
   combo = 0;
@@ -448,7 +498,7 @@ function toqueNoVazio() {
 
 function queda(motivo) {
   if (!rodando) return;
-  vidas--; combo = 0;
+  vidas--; combo = 0; segurando = null;
   somErro(actx.currentTime);
   flash(motivo, '#f85149', 300);
   const b = batidaVisual();
@@ -457,7 +507,7 @@ function queda(motivo) {
   if (vidas <= 0) { fim(); return; }
 
   // relanca: limpa a partitura e monta um saque do chao
-  deriva = 0; derivaVis = 0; pesoVis = 0;
+  deriva = 0; derivaVis = 0; pesoVis = 0; segurando = null;
   notas = []; infoLance = {};
   proxB = Math.ceil(b + 4);
   notas.push({ beat: proxB - 2, parte: 'chao', lance: 0,
@@ -508,7 +558,7 @@ function quadro(ts) {
     if (alvo && (batidaJulg() - alvo.beat) * SPB * 1000 > JAN.ok) {
       alvo.julgada = true;
       infoLance[alvo.lance] && (infoLance[alvo.lance].sujo = true);
-      queda('deixou passar');
+      queda(alvo.solta ? 'segurou demais' : 'deixou passar');
     }
   }
 
@@ -549,7 +599,7 @@ function chegando(parte, b) {
   for (let i = 0; i < notas.length; i++) {
     const n = notas[i];
     if (n.beat > b + 0.55) return null;
-    if (n.beat < b - 0.05 || n.julgada || n.parte !== parte) continue;
+    if (n.beat < b - 0.05 || n.julgada || n.solta || n.parte !== parte) continue;
     return n;
   }
   return null;
@@ -558,6 +608,7 @@ function chegando(parte, b) {
 // o quanto essa parte do corpo esta empenhada agora: 0 parada, 1 no toque.
 // antes do toque e armacao, depois e continuacao do movimento.
 function empenho(parte, b) {
+  if (segurando && segurando.parte === parte) return { u: 1, saindo: false };
   let uA = 0, uF = 0;
   const n = chegando(parte, b);
   if (n) uA = suave(clamp(1 - (n.beat - b) / 0.55, 0, 1));
@@ -640,6 +691,13 @@ function desenharPerna(lado, b, quadril) {
                y: joelho.y + (dj.y - joelho.y) * eCo.u };
     const pend = { x: joelho.x + sig * 20, y: joelho.y + 78 };
     pe = { x: pe.x + (pend.x - pe.x) * eCo.u, y: pe.y + (pend.y - pe.y) * eCo.u };
+  }
+
+  if (segurando && segurando.tipo === 'giro' && segurando.parte === 'pe' + lado) {
+    const k = clamp((b - segurando.de) / (segurando.ate - segurando.de), 0, 1);
+    const ang = k * Math.PI * 2 - Math.PI / 2;
+    pe = { x: bolaVis.x + Math.cos(ang) * 36, y: bolaVis.y + Math.sin(ang) * 36 };
+    joelho = articular(quadril, pe, OSSO_PERNA, sig);
   }
 
   membro(quadril, joelho, 30, 21, COR.pele);            // coxa
@@ -764,7 +822,7 @@ function desenharAlvos(b) {
   // anel que fecha na hora do toque
   if (prox) {
     const faltam = prox.beat - b;
-    if (faltam > -0.4 && faltam < 1.6) {
+    if (!prox.solta && faltam > -0.4 && faltam < 1.6) {
       const pt = posParte(prox.parte, derivaVis);
       const r = 17 + clamp(faltam, 0, 1.6) * 44;
       ctx.strokeStyle = PARTES[prox.parte].cor;
@@ -774,6 +832,26 @@ function desenharAlvos(b) {
       ctx.globalAlpha = 1;
     }
   }
+}
+
+// o anel de segurar precisa vir DEPOIS do jogador e da bola, senao some atras deles
+function desenharSegurar(b) {
+  if (!segurando) return;
+  const k = clamp((b - segurando.de) / (segurando.ate - segurando.de), 0, 1);
+  const pt = segurando.tipo === 'giro' ? bolaVis : posParte(segurando.parte, derivaVis);
+  ctx.strokeStyle = 'rgba(13,17,23,.55)';
+  ctx.lineWidth = 7;
+  ctx.beginPath(); ctx.arc(pt.x, pt.y, 32, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = k > 0.88 ? '#3fb950' : '#e3b341';
+  ctx.lineWidth = 5; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(pt.x, pt.y, 32, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  ctx.fillStyle = k > 0.88 ? '#3fb950' : '#e3b341';
+  ctx.font = '800 13px ui-sans-serif,system-ui,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(k > 0.88 ? 'SOLTA' : 'SEGURA', pt.x, pt.y - 44);
 }
 
 function desenharHUD(b) {
@@ -922,6 +1000,7 @@ function desenhar(b) {
   });
   ctx.globalAlpha = 1;
 
+  desenharSegurar(b);
   desenharHUD(b);
 }
 
@@ -1106,12 +1185,24 @@ addEventListener('keydown', function (e) {
   if (parte) pressionar(parte);
 });
 
+addEventListener('keyup', function (e) {
+  if (!rodando || !telaOpcoes.hidden) return;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  const parte = PORTECLA[k === 'Spacebar' ? ' ' : k];
+  if (parte) soltar(parte);
+});
+
+// sair da janela come o keyup e deixaria a tecla presa: pausa em vez disso
+addEventListener('blur', function () {
+  if (rodando && telaOpcoes.hidden) { segurando = null; abrirOpcoes(); }
+});
+
 function comecar() {
   if (!actx) iniciarAudio();
   if (actx.state === 'suspended') actx.resume();
 
   pontos = 0; combo = 0; melhorCombo = 0; vidas = 3;
-  deriva = 0; derivaVis = 0; pesoVis = 0; derivaVel = 0; derivaAnt = 0;
+  deriva = 0; derivaVis = 0; pesoVis = 0; derivaVel = 0; derivaAnt = 0; segurando = null;
   notas = []; infoLance = {}; idLance = 0;
   rastro = []; faiscas = []; flashes = []; alcance = {};
   anuncio = null; ultimoJulg = null; errosRec = [];

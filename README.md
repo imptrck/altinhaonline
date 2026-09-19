@@ -17,6 +17,18 @@ Jogue: https://imptrck.github.io/altinhaonline/
 | `L` | pé direito |
 | `Esc` | opções / pausa |
 
+## Notas longas (segurar)
+
+Alguns toques pedem que você **segure** a tecla em vez de tocar. Um anel de
+progresso mostra quanto falta, e o aviso vira **SOLTA** perto do fim — soltar é
+julgado como um toque, com a mesma janela de tempo.
+
+- **Matar no pé / na coxa** — a bola para em cima do corpo enquanto você segura.
+- **Volta ao mundo** — você toca, a bola sobe, o pé dá a volta em torno dela, e
+  você solta na hora em que ela desce.
+
+Soltar cedo derruba a bola. Segurar demais também.
+
 **Ajuste a latência antes de julgar seu ritmo.** Jogue uns 20 toques, olhe o "erro
 médio" no rodapé e clique em *usar como latência*. Fone Bluetooth costuma pedir
 150–250 ms; sem isso o jogo parece quebrado e a culpa não é sua.
