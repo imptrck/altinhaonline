@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Embaixadinha</title>
+<style>
+  :root{
+    --bg:#0d1117; --painel:#161b22; --linha:#30363d; --txt:#e6edf3; --fraco:#8b949e;
+    --verde:#3fb950; --azul:#58a6ff; --amarelo:#e3b341; --vermelho:#f85149;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  #wrap{position:relative;width:min(100vw,900px);margin:0 auto;
+    height:100%;display:flex;align-items:center;justify-content:center}
+  canvas{width:100%;aspect-ratio:900/620;display:block;
+    background:linear-gradient(#0f1622 0%,#101d16 62%,#0c1710 100%);
+    border:1px solid var(--linha);border-radius:12px}
+  .tela{position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;padding:26px;text-align:center;
+    background:rgba(8,12,18,.93);border-radius:12px;backdrop-filter:blur(3px)}
+  .tela[hidden]{display:none}
+  h1{margin:0;font-size:40px;letter-spacing:-1px}
+  h1 span{color:var(--verde)}
+  p{margin:0;color:var(--fraco);max-width:520px;line-height:1.55;font-size:14px}
+  .teclas{display:flex;gap:8px;margin:4px 0}
+  .tecla{background:var(--painel);border:1px solid var(--linha);border-radius:8px;
+    padding:8px 12px;min-width:74px}
+  .tecla b{display:block;font-size:17px}
+  .tecla i{font-style:normal;font-size:11px;color:var(--fraco)}
+  button{background:var(--verde);color:#04180a;border:0;border-radius:8px;
+    padding:11px 26px;font-size:15px;font-weight:700;cursor:pointer}
+  button:hover{filter:brightness(1.1)}
+  .ajuste{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--fraco)}
+  input[type=range]{width:200px;accent-color:var(--azul)}
+  #calib{position:absolute;right:10px;bottom:8px;font-size:11px;color:var(--fraco);
+    background:rgba(13,17,23,.8);border:1px solid var(--linha);border-radius:7px;padding:5px 9px}
+  #calib button{background:var(--painel);color:var(--txt);padding:2px 8px;font-size:11px;
+    font-weight:500;margin-left:6px}
+  .grande{font-size:46px;font-weight:800;color:var(--amarelo)}
+  .linhaOp{display:grid;grid-template-columns:96px 200px 54px;align-items:center;
+    gap:12px;font-size:13px;color:var(--fraco)}
+  .linhaOp span{font-variant-numeric:tabular-nums;color:var(--txt);font-size:12px}
+  .botoes{display:flex;gap:10px;margin-top:6px}
+  button.sec{background:var(--painel);color:var(--txt);border:1px solid var(--linha)}
+  #dica{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--fraco)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+
+  <div class="tela" id="telaInicio">
+    <h1>Embaixa<span>dinha</span></h1>
+    <p>A bola <b>é</b> o metrônomo. Cada toque cai num tempo da música — acerte na
+       hora certa e ela volta centrada. Erre o tempo e ela sai torta, e você tem
+       que se esticar pra salvar. Deixou cair 3 vezes, acabou.</p>
+    <div class="teclas">
+      <div class="tecla"><b>A</b><i>pé esq.</i></div>
+      <div class="tecla"><b>S</b><i>coxa esq.</i></div>
+      <div class="tecla"><b>espaço</b><i>cabeça</i></div>
+      <div class="tecla"><b>K</b><i>coxa dir.</i></div>
+      <div class="tecla"><b>L</b><i>pé dir.</i></div>
+    </div>
+    <div class="botoes">
+      <button id="btIniciar">começar</button>
+      <button id="btOpcoes" class="sec">opções</button>
+    </div>
+  </div>
+
+  <div class="tela" id="telaFim" hidden>
+    <h1>Caiu.</h1>
+    <div class="grande" id="fimPontos">0</div>
+    <p id="fimResumo"></p>
+    <button id="btDeNovo">de novo</button>
+  </div>
+
+  <div class="tela" id="telaOpcoes" hidden>
+    <h1 style="font-size:28px">Opções</h1>
+    <div class="linhaOp"><label>volume geral</label>
+      <input type="range" id="vGeral" min="0" max="100" value="80"><span id="lGeral">80</span></div>
+    <div class="linhaOp"><label>música</label>
+      <input type="range" id="vMus" min="0" max="100" value="70"><span id="lMus">70</span></div>
+    <div class="linhaOp"><label>efeitos</label>
+      <input type="range" id="vEfe" min="0" max="100" value="95"><span id="lEfe">95</span></div>
+    <div class="linhaOp"><label>latência</label>
+      <input type="range" id="vLat" min="-250" max="250" step="5" value="0"><span id="lLat">0 ms</span></div>
+    <p>Se o <b>erro médio</b> no rodapé viver negativo, aumente a latência; se viver
+       positivo, diminua. Fone Bluetooth costuma pedir 150–250&nbsp;ms.</p>
+    <div class="botoes">
+      <button id="btVoltar">voltar</button>
+      <button id="btRecomecar" class="sec">recomeçar</button>
+    </div>
+  </div>
+
+  <div id="dica" hidden>esc = opções</div>
+
+  <div id="calib" hidden>
+    erro médio: <b id="mediaErro">–</b>
+    <button id="btUsar">usar como latência</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ==========================================================================
+   1. AUDIO  —  batuque sintetizado + relogio de verdade
+   Regra de ouro: nada de Date.now() nem contar frames. O tempo do jogo sai
+   de actx.currentTime, que e o mesmo relogio que toca o som.
+   ========================================================================== */
+
+const BPM = 96;
+const SPB = 60 / BPM;          // segundos por batida
+const SPS = SPB / 4;           // segundos por passo (semicolcheia)
+
+let actx = null, master = null, gMusica = null, gEfeitos = null, ruido = null;
+const vol = { geral: 80, mus: 70, efe: 95 };
+let tZero = 0;                 // actx.currentTime em que a musica comecou
+let passo = 0, tocadorId = null;
+let offsetMs = 0;              // latencia compensada no julgamento
+
+function iniciarAudio() {
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  master = actx.createGain();
+  gMusica = actx.createGain();
+  gEfeitos = actx.createGain();
+  master.connect(actx.destination);
+  gMusica.connect(master);
+  gEfeitos.connect(master);
+  aplicarVolumes();
+
+  const n = Math.floor(actx.sampleRate * 0.5);
+  ruido = actx.createBuffer(1, n, actx.sampleRate);
+  const d = ruido.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+
+  const lat = actx.outputLatency || actx.baseLatency || 0;
+  if (lat > 0 && offsetMs === 0) porLatencia(Math.round(lat * 1000));
+}
+
+function env(g, t, atk, dec, pico) {
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(pico, t + atk);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + atk + dec);
+}
+
+function surdo(t, amp) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(130, t);
+  o.frequency.exponentialRampToValueAtTime(44, t + 0.16);
+  env(g, t, 0.004, 0.30, 0.85 * amp);
+  o.connect(g); g.connect(gMusica);
+  o.start(t); o.stop(t + 0.4);
+}
+
+function caixa(t, amp) {
+  const s = actx.createBufferSource(); s.buffer = ruido;
+  const f = actx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 2200;
+  const g = actx.createGain(); env(g, t, 0.002, 0.045, amp);
+  s.connect(f); f.connect(g); g.connect(gMusica);
+  s.start(t); s.stop(t + 0.09);
+}
+
+function agogo(t, hz, amp) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = 'square'; o.frequency.value = hz;
+  env(g, t, 0.002, 0.11, amp);
+  o.connect(g); g.connect(gMusica);
+  o.start(t); o.stop(t + 0.2);
+}
+
+function baixo(t, hz, dur) {
+  const o = actx.createOscillator(), g = actx.createGain(), f = actx.createBiquadFilter();
+  o.type = 'triangle'; o.frequency.value = hz;
+  f.type = 'lowpass'; f.frequency.value = 760;
+  env(g, t, 0.012, dur, 0.4);
+  o.connect(f); f.connect(g); g.connect(gMusica);
+  o.start(t); o.stop(t + dur + 0.15);
+}
+
+function somToque(t, hz, forte) {
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(hz * 2.2, t);
+  o.frequency.exponentialRampToValueAtTime(hz, t + 0.05);
+  env(g, t, 0.002, 0.09, forte ? 0.5 : 0.3);
+  o.connect(g); g.connect(gEfeitos);
+  o.start(t); o.stop(t + 0.16);
+
+  const s = actx.createBufferSource(); s.buffer = ruido;
+  const bp = actx.createBiquadFilter(); bp.type = 'bandpass';
+  bp.frequency.value = hz * 3; bp.Q.value = 2.5;
+  const g2 = actx.createGain(); env(g2, t, 0.001, 0.035, forte ? 0.32 : 0.18);
+  s.connect(bp); bp.connect(g2); g2.connect(gEfeitos);
+  s.start(t); s.stop(t + 0.07);
+}
+
+function somErro(t) {
+  const s = actx.createBufferSource(); s.buffer = ruido;
+  const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
+  const g = actx.createGain(); env(g, t, 0.003, 0.18, 0.28);
+  s.connect(f); f.connect(g); g.connect(gEfeitos);
+  s.start(t); s.stop(t + 0.25);
+}
+
+// padroes de 16 passos (1 compasso), levada de batucada
+const P_SURDO = [0,0,0,0, 1,0,0,.45, 0,0,0,0, 1,0,.5,0];
+const P_CAIXA = [.5,.18,.3,.18, .5,.18,.3,.3, .5,.18,.3,.18, .5,.3,.18,.4];
+const P_AGOGO = [1,0,0,2, 0,0,1,0, 0,2,0,0, 1,0,0,2];
+const PROG    = [55, 55, 73.42, 65.41];
+
+function tocarPasso(p, t) {
+  const s = p % 16, compasso = (p / 16 | 0) % 4;
+  if (P_SURDO[s]) surdo(t, P_SURDO[s]);
+  if (P_CAIXA[s]) caixa(t, P_CAIXA[s] * 0.26);
+  if (P_AGOGO[s]) agogo(t, P_AGOGO[s] === 1 ? 932 : 699, 0.1);
+  if (s === 0)  baixo(t, PROG[compasso], SPB * 1.4);
+  if (s === 10) baixo(t, PROG[compasso] * 1.5, SPB * 0.55);
+}
+
+// agendador com lookahead: o setInterval so decide O QUE agendar;
+// quem marca a hora exata e o Web Audio.
+function bombeador() {
+  if (!actx) return;
+  const horizonte = actx.currentTime + 0.20;
+  while (tZero + passo * SPS < horizonte) {
+    tocarPasso(passo, tZero + passo * SPS);
+    passo++;
+  }
+}
+
+const batidaVisual = () => (actx.currentTime - tZero) / SPB;
+const batidaJulg   = () => (actx.currentTime - tZero - offsetMs / 1000) / SPB;
+
+/* ==========================================================================
+   2. PARTITURA  —  lances encadeados, dificuldade subindo
+   ========================================================================== */
+
+const CX = 450, CHAO = 566;
+
+const PARTES = {
+  peE:    { tecla:'a', rot:'A', nome:'pé E',   x:-98, y:470, cor:'#58a6ff', hz:300 },
+  coxaE:  { tecla:'s', rot:'S', nome:'coxa E', x:-82, y:338, cor:'#3fb950', hz:380 },
+  cabeca: { tecla:' ', rot:'␣', nome:'cabeça', x:  0, y:144, cor:'#e3b341', hz:540 },
+  coxaD:  { tecla:'k', rot:'K', nome:'coxa D', x: 82, y:338, cor:'#3fb950', hz:380 },
+  peD:    { tecla:'l', rot:'L', nome:'pé D',   x: 98, y:470, cor:'#58a6ff', hz:300 },
+};
+const PORTECLA = {};
+for (const k in PARTES) PORTECLA[PARTES[k].tecla] = k;
+
+const LANCES = [
+  { nome:'Base',        dif:0, len:4, ns:[[0,'peE'],[1,'peD'],[2,'peE'],[3,'peD']] },
+  { nome:'Bola alta',   dif:0, len:4, ns:[[0,'peE'],[2,'peD']] },
+  { nome:'Coxinha',     dif:1, len:4, ns:[[0,'peE'],[1,'coxaE'],[2,'peD'],[3,'coxaD']] },
+  { nome:'Cabeçada',    dif:1, len:4, ns:[[0,'peE'],[2,'cabeca']] },
+  { nome:'Escadinha',   dif:1, len:4, ns:[[0,'peE'],[1,'coxaE'],[2,'cabeca'],[3,'coxaD']] },
+  { nome:'Pedalada',    dif:2, len:2, ns:[[0,'peE'],[.5,'peD'],[1,'peE'],[1.5,'peD']] },
+  { nome:'Rolinho',     dif:2, len:2, ns:[[0,'peD'],[.5,'peD'],[1,'peD'],[1.5,'peD']] },
+  { nome:'Chapéu',      dif:2, len:4, ns:[[0,'cabeca'],[1,'cabeca'],[2,'peE']] },
+  { nome:'Ziguezague',  dif:3, len:4, ns:[[0,'peE'],[.75,'peD'],[1.5,'coxaE'],[2.25,'coxaD'],[3,'cabeca']] },
+  { nome:'Malabarismo', dif:3, len:4, ns:[[0,'peE'],[.5,'coxaE'],[1,'cabeca'],[1.5,'coxaD'],
+                                          [2,'peD'],[2.5,'coxaD'],[3,'cabeca'],[3.5,'coxaE']] },
+];
+
+let notas = [], proxB = 0, idLance = 0, infoLance = {};
+
+function gerar(ate) {
+  while (proxB < ate) {
+    const nivel = Math.min(3, Math.max(0, Math.floor((proxB - 8) / 20)));
+    let pool = LANCES.filter(l => l.dif <= nivel);
+    if (!pool.length) pool = LANCES;
+    const l = pool[(Math.random() * pool.length) | 0];
+    const id = ++idLance;
+    infoLance[id] = { nome:l.nome, dif:l.dif, total:l.ns.length, limpos:0, sujo:false };
+    l.ns.forEach(function (par, i) {
+      notas.push({ beat: proxB + par[0], parte: par[1], lance: id,
+                   ultima: i === l.ns.length - 1, julgada: false, dx: 0 });
+    });
+    proxB += l.len;
+  }
+}
+
+function posParte(parte, dx) {
+  if (parte === 'chao') return { x: CX + (dx || 0), y: CHAO };
+  const p = PARTES[parte];
+  return { x: CX + p.x + (dx || 0), y: p.y };
+}
+
+/* ==========================================================================
+   3. ESTADO + FISICA DE MENTIRA
+   A bola nao e simulada. Dois toques consecutivos sao dois pontos e um
+   intervalo de tempo conhecido — isso define uma parabola unica. Formula
+   fechada, deterministica, nunca dessincroniza da musica.
+   ========================================================================== */
+
+const JAN = { perf: 45, bom: 90, ok: 145 };   // janelas em ms
+const DERIVA_MAX = 118;                        // px antes de perder a bola
+
+let rodando = false, pontos = 0, combo = 0, melhorCombo = 0, vidas = 3;
+let deriva = 0, bolaVis = { x: CX, y: CHAO }, rastro = [];
+let cai = { b0: -999, p0: { x: CX, y: CHAO }, vx: 0 };
+let flashes = [], faiscas = [], anuncio = null, alcance = {}, errosRec = [];
+let agacha = 0, derivaVel = 0, derivaAnt = 0, esmaga = -99, pausado = false;
+let ultimoJulg = null;
+
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+function trecho(b) {
+  let i = 0;
+  while (i + 1 < notas.length && notas[i + 1].beat <= b) i++;
+  return [notas[i], notas[i + 1]];
+}
+
+function bolaNaParabola(b) {
+  const par = trecho(b), a = par[0], c = par[1];
+  if (!a) return { x: CX, y: CHAO };
+  if (!c) return posParte(a.parte, a.dx);
+  const p0 = posParte(a.parte, a.dx);
+  const p1 = posParte(c.parte, c.julgada ? c.dx : deriva);
+  const dt = c.beat - a.beat;
+  const u = clamp((b - a.beat) / dt, 0, 1);
+  const arco = Math.min(300, 82 * Math.pow(dt, 1.4));
+  return {
+    x: p0.x + (p1.x - p0.x) * u,
+    y: p0.y + (p1.y - p0.y) * u - arco * 4 * u * (1 - u),
+  };
+}
+
+// bola solta: so roda antes da primeira nota e depois de uma queda
+function bolaCaindo(b) {
+  const dt = Math.max(0, (b - cai.b0) * SPB);
+  let y = cai.p0.y + 1100 * dt * dt * 0.5;
+  let x = cai.p0.x + cai.vx * dt;
+  if (y > CHAO) {                       // um quique e para
+    const sob = y - CHAO;
+    y = CHAO - Math.max(0, 42 - sob * 0.55);
+    if (sob > 80) y = CHAO;
+  }
+  return { x: clamp(x, 40, 860), y: Math.min(y, CHAO) };
+}
+
+/* ==========================================================================
+   4. JULGAMENTO
+   O erro de tempo nao vira so um numero: vira DERIVA lateral. Toque certo
+   recentra a bola, toque porco empurra pro lado. E isso que faz parecer
+   embaixadinha e nao DDR com skin de bola.
+   ========================================================================== */
+
+function notaPendente() {
+  for (let i = 0; i < notas.length; i++) {
+    if (!notas[i].julgada && notas[i].parte !== 'chao') return notas[i];
+  }
+  return null;
+}
+
+function flash(txt, cor, y) {
+  flashes.push({ txt: txt, cor: cor, b0: batidaVisual(), y: y || 250 });
+}
+
+function faiscar(p, cor, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, v = 60 + Math.random() * 190;
+    faiscas.push({ x:p.x, y:p.y, vx:Math.cos(a)*v, vy:Math.sin(a)*v - 60,
+                   vida:1, cor:cor });
+  }
+}
+
+function pressionar(parte) {
+  if (!rodando) return;
+  const alvo = notaPendente();
+  if (!alvo) return;
+  const errMs = (batidaJulg() - alvo.beat) * SPB * 1000;
+
+  if (errMs < -JAN.ok) { toqueNoVazio(); return; }   // chutou cedo demais
+  if (errMs >  JAN.ok) return;                       // ja era, o frame cuida
+
+  if (alvo.parte !== parte) {                        // parte errada do corpo
+    toqueNoVazio();
+    infoLance[alvo.lance].sujo = true;
+    return;
+  }
+
+  const abs = Math.abs(errMs);
+  const q = abs <= JAN.perf ? 'perf' : abs <= JAN.bom ? 'bom' : 'ok';
+  const amort = q === 'perf' ? 0.30 : q === 'bom' ? 0.68 : 0.93;
+  const ganho = q === 'perf' ? 0.22 : q === 'bom' ? 0.50 : 0.85;
+
+  deriva = deriva * amort + errMs * ganho;
+  alvo.julgada = true;
+  alvo.dx = deriva;
+
+  const inf = infoLance[alvo.lance];
+  if (q === 'ok') inf.sujo = true; else inf.limpos++;
+
+  combo++;
+  melhorCombo = Math.max(melhorCombo, combo);
+  const mult = 1 + Math.min(combo, 60) / 30;
+  pontos += Math.round((q === 'perf' ? 300 : q === 'bom' ? 170 : 70) * mult);
+
+  errosRec.push(errMs);
+  if (errosRec.length > 24) errosRec.shift();
+
+  const p = posParte(alvo.parte, deriva);
+  alcance[alvo.parte] = { b0: batidaVisual(), p: p };
+  somToque(actx.currentTime, PARTES[alvo.parte].hz, q === 'perf');
+  faiscar(p, q === 'perf' ? '#e3b341' : q === 'bom' ? '#3fb950' : '#8b949e',
+          q === 'perf' ? 14 : q === 'bom' ? 8 : 4);
+  ultimoJulg = { q: q, err: errMs, b0: batidaVisual() };
+  esmaga = batidaVisual();
+  agacha = q === 'perf' ? 5 : 9;
+
+  if (alvo.ultima && !inf.sujo && inf.limpos === inf.total && inf.dif >= 1) {
+    pontos += 400 + inf.dif * 250;
+    anuncio = { txt: inf.nome, b0: batidaVisual() };
+  }
+  if (Math.abs(deriva) > DERIVA_MAX) queda('bola longe demais');
+}
+
+function toqueNoVazio() {
+  deriva += (deriva >= 0 ? 1 : -1) * 26;
+  combo = 0;
+  somErro(actx.currentTime);
+  flash('no vazio', '#8b949e', 300);
+  if (Math.abs(deriva) > DERIVA_MAX) queda('perdeu o equilíbrio');
+}
+
+function queda(motivo) {
+  if (!rodando) return;
+  vidas--; combo = 0;
+  somErro(actx.currentTime);
+  flash(motivo, '#f85149', 300);
+  const b = batidaVisual();
+  cai = { b0: b, p0: { x: bolaVis.x, y: bolaVis.y }, vx: deriva * 1.6 };
+
+  if (vidas <= 0) { fim(); return; }
+
+  // relanca: limpa a partitura e monta um saque do chao
+  deriva = 0;
+  notas = []; infoLance = {};
+  proxB = Math.ceil(b + 4);
+  notas.push({ beat: proxB - 2, parte: 'chao', lance: 0,
+               ultima: false, julgada: true, dx: 0 });
+  gerar(proxB + 20);
+}
+
+function fim() {
+  rodando = false;
+  telaFim.hidden = false;
+  fimPontos.textContent = pontos.toLocaleString('pt-BR');
+  fimResumo.textContent = 'maior sequência: ' + melhorCombo + ' toques'
+    + (errosRec.length ? '  ·  erro médio: ' + media().toFixed(0) + ' ms' : '');
+}
+
+const media = () => errosRec.reduce((a, b) => a + b, 0) / (errosRec.length || 1);
+
+/* ==========================================================================
+   5. LOOP
+   ========================================================================== */
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+function ajustarCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = 900 * dpr; cv.height = 620 * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+ajustarCanvas();
+addEventListener('resize', ajustarCanvas);
+
+let ultimoQuadro = 0;
+
+function quadro(ts) {
+  requestAnimationFrame(quadro);
+  if (!actx) return;
+  const dt = Math.min(0.05, (ts - ultimoQuadro) / 1000 || 0);
+  ultimoQuadro = ts;
+  const b = batidaVisual();
+
+
+  if (rodando) {
+    gerar(b + 24);
+    while (notas.length > 3 && notas[1].beat < b - 6) notas.shift();
+
+    const alvo = notaPendente();
+    if (alvo && (batidaJulg() - alvo.beat) * SPB * 1000 > JAN.ok) {
+      alvo.julgada = true;
+      infoLance[alvo.lance] && (infoLance[alvo.lance].sujo = true);
+      queda('deixou passar');
+    }
+  }
+
+  bolaVis = (notas.length && b >= notas[0].beat) ? bolaNaParabola(b) : bolaCaindo(b);
+  rastro.push({ x: bolaVis.x, y: bolaVis.y });
+  if (rastro.length > 16) rastro.shift();
+
+  for (let i = faiscas.length - 1; i >= 0; i--) {
+    const f = faiscas[i];
+    f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 900 * dt; f.vida -= dt * 2.2;
+    if (f.vida <= 0) faiscas.splice(i, 1);
+  }
+  agacha += (0 - agacha) * Math.min(1, dt * 9);
+  derivaVel = derivaVel * 0.86 + (deriva - derivaAnt) * 0.6;
+  derivaAnt = deriva;
+  flashes = flashes.filter(f => b - f.b0 < 1.2);
+  if (anuncio && b - anuncio.b0 > 2) anuncio = null;
+
+  desenhar(b);
+}
+requestAnimationFrame(quadro);
+
+/* ==========================================================================
+   6. DESENHO
+   ========================================================================== */
+
+function linha(x1, y1, x2, y2, larg, cor) {
+  ctx.strokeStyle = cor; ctx.lineWidth = larg; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+}
+
+const REPOUSO = {
+  peE: { x: CX - 56, y: CHAO - 8 },
+  peD: { x: CX + 56, y: CHAO - 8 },
+};
+const OSSO_PERNA = 86, OSSO_BRACO = 46;
+const suave = u => u * u * (3 - 2 * u);
+
+// proxima nota nao julgada dessa parte, se ja da pra comecar a armar o toque
+function chegando(parte, b) {
+  for (let i = 0; i < notas.length; i++) {
+    const n = notas[i];
+    if (n.beat > b + 0.55) return null;
+    if (n.beat < b - 0.05 || n.julgada || n.parte !== parte) continue;
+    return n;
+  }
+  return null;
+}
+
+// o quanto essa parte do corpo esta empenhada agora: 0 parada, 1 no toque.
+// antes do toque e armacao, depois e continuacao do movimento.
+function empenho(parte, b) {
+  let uA = 0, uF = 0;
+  const n = chegando(parte, b);
+  if (n) uA = suave(clamp(1 - (n.beat - b) / 0.55, 0, 1));
+  const r = alcance[parte];
+  if (r && b - r.b0 < 0.5) uF = suave(clamp(1 - (b - r.b0) / 0.5, 0, 1));
+  return { u: Math.max(uA, uF), saindo: uF > uA };
+}
+
+// joelho/cotovelo: duas barras de tamanho fixo, articulacao cai sozinha
+function articular(a, z, osso, lado) {
+  let dx = z.x - a.x, dy = z.y - a.y;
+  let d = Math.hypot(dx, dy) || 0.001;
+  d = Math.min(d, osso * 1.98);
+  const meio = d / 2;
+  const h = Math.sqrt(Math.max(0, osso * osso - meio * meio));
+  const ux = dx / d, uy = dy / d;
+  return { x: a.x + ux * meio - uy * h * -lado,
+           y: a.y + uy * meio + ux * h * -lado };
+}
+
+function desenharPerna(lado, b, quadril) {
+  const sig = lado === 'E' ? -1 : 1;
+  const ePe = empenho('pe' + lado, b), eCo = empenho('coxa' + lado, b);
+  const rep = REPOUSO['pe' + lado];
+
+  // o pe sai do chao e sobe pra encontrar a bola; passa um pouco na saida
+  const toque = posParte('pe' + lado, deriva);
+  const destino = ePe.saindo ? { x: toque.x + sig * 12, y: toque.y - 20 } : toque;
+  let pe = { x: rep.x + (destino.x - rep.x) * ePe.u,
+             y: rep.y + (destino.y - rep.y) * ePe.u };
+  let joelho = articular(quadril, pe, OSSO_PERNA, sig);
+
+  // na coxa quem sobe e o joelho; o pe fica pendurado embaixo
+  if (eCo.u > 0.01) {
+    const pc = posParte('coxa' + lado, deriva);
+    const dj = eCo.saindo ? { x: pc.x, y: pc.y - 12 } : pc;
+    joelho = { x: joelho.x + (dj.x - joelho.x) * eCo.u,
+               y: joelho.y + (dj.y - joelho.y) * eCo.u };
+    const pend = { x: joelho.x + sig * 20, y: joelho.y + 78 };
+    pe = { x: pe.x + (pend.x - pe.x) * eCo.u, y: pe.y + (pend.y - pe.y) * eCo.u };
+  }
+
+  linha(quadril.x, quadril.y, joelho.x, joelho.y, 15, '#2a3a52');
+  linha(joelho.x, joelho.y, pe.x, pe.y, 12, '#233043');
+  ctx.fillStyle = '#58a6ff';
+  ctx.beginPath(); ctx.arc(pe.x, pe.y, 9, 0, Math.PI * 2); ctx.fill();
+
+  // sombra some quando o pe sai do chao
+  const noAr = clamp((rep.y - pe.y) / 90, 0, 1);
+  ctx.fillStyle = 'rgba(0,0,0,' + (0.30 * (1 - noAr)).toFixed(3) + ')';
+  ctx.beginPath();
+  ctx.ellipse(pe.x, CHAO + 4, 22 - noAr * 8, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  return Math.max(ePe.u, eCo.u);
+}
+
+function desenharBraco(lado, ombro, levanta) {
+  const sig = lado === 'E' ? -1 : 1;
+  const mao = { x: ombro.x + sig * (38 + levanta * 32) - derivaVel * 1.1,
+                y: ombro.y + 80 - levanta * 64 };
+  const cot = articular(ombro, mao, OSSO_BRACO, -sig);
+  linha(ombro.x, ombro.y, cot.x, cot.y, 10, '#2a3a52');
+  linha(cot.x, cot.y, mao.x, mao.y, 8, '#233043');
+}
+
+function desenharJogador(b) {
+  const incl = clamp(deriva * 0.26, -42, 42);
+  const eCab = empenho('cabeca', b);
+  const bal  = Math.sin(b * Math.PI) * 2.5;          // gingado no tempo
+  const resp = Math.sin(b * Math.PI / 2) * 2;
+  const alto = eCab.u * 16;                           // sobe pra cabecear
+
+  const uE = Math.max(empenho('peE', b).u, empenho('coxaE', b).u);
+  const uD = Math.max(empenho('peD', b).u, empenho('coxaD', b).u);
+  const peso = (uE - uD) * 13;                        // vai pro pe que fica no chao
+
+  const quadril = { x: CX + incl * 0.5 + bal + peso,  y: 392 + agacha - alto };
+  const ombro   = { x: CX + incl * 1.0 + bal * 1.5 + peso * 0.5, y: 250 + agacha * 0.5 - alto + resp };
+  const cabeca  = { x: CX + incl * 1.3 + bal * 2 + peso * 0.3,   y: 192 - alto - eCab.u * 10 };
+  cabeca.x += clamp((bolaVis.x - cabeca.x) * 0.05, -9, 9);   // acompanha a bola
+
+  ctx.fillStyle = 'rgba(0,0,0,.28)';
+  ctx.beginPath();
+  ctx.ellipse(quadril.x, CHAO + 6, 62, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  desenharPerna('E', b, quadril);
+  desenharPerna('D', b, quadril);
+
+  linha(quadril.x, quadril.y, ombro.x, ombro.y, 24, '#2a3a52');
+  linha(ombro.x, ombro.y, cabeca.x, cabeca.y + 15, 12, '#2a3a52');
+
+  // os bracos contrabalancam: sobe o oposto da perna que trabalha,
+  // e os dois sobem junto quando o cara esta perdendo o equilibrio
+  const tensao = Math.abs(deriva) / DERIVA_MAX;
+  const base = tensao * 0.45 + eCab.u * 0.3 + Math.abs(bal) * 0.04;
+  desenharBraco('E', ombro, clamp(uD * 0.5 + base, 0, 1));
+  desenharBraco('D', ombro, clamp(uE * 0.5 + base, 0, 1));
+
+  ctx.fillStyle = '#d9b48f';
+  ctx.beginPath(); ctx.arc(cabeca.x, cabeca.y, 24, 0, Math.PI * 2); ctx.fill();
+}
+
+function desenharAlvos(b) {
+  const prox = notaPendente();
+  for (const k in PARTES) {
+    const p = PARTES[k], pt = posParte(k, deriva);
+    const ativo = prox && prox.parte === k;
+    ctx.strokeStyle = ativo ? p.cor : 'rgba(139,148,158,.32)';
+    ctx.lineWidth = ativo ? 2.5 : 1.5;
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, 17, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = ativo ? p.cor : 'rgba(139,148,158,.5)';
+    ctx.font = '600 12px ui-monospace,monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(p.rot, pt.x, pt.y);
+  }
+  // anel que fecha na hora do toque
+  if (prox) {
+    const faltam = prox.beat - b;
+    if (faltam > -0.4 && faltam < 1.6) {
+      const pt = posParte(prox.parte, deriva);
+      const r = 17 + clamp(faltam, 0, 1.6) * 44;
+      ctx.strokeStyle = PARTES[prox.parte].cor;
+      ctx.globalAlpha = clamp(1 - Math.abs(faltam) / 1.6, 0.15, 1);
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+function desenharHUD(b) {
+  ctx.textBaseline = 'alphabetic';
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#e6edf3';
+  ctx.font = '700 30px ui-sans-serif,system-ui,sans-serif';
+  ctx.fillText(pontos.toLocaleString('pt-BR'), 24, 44);
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '12px ui-sans-serif,system-ui,sans-serif';
+  ctx.fillText('pontos', 24, 60);
+
+  if (combo > 1) {
+    ctx.fillStyle = '#e3b341';
+    ctx.font = '700 22px ui-sans-serif,system-ui,sans-serif';
+    ctx.fillText(combo + ' toques', 24, 94);
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '12px ui-sans-serif,system-ui,sans-serif';
+    ctx.fillText('x' + (1 + Math.min(combo, 60) / 30).toFixed(1), 24, 110);
+  }
+
+  // bolas restantes
+  ctx.textAlign = 'right';
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.arc(876 - i * 26, 38, 9, 0, Math.PI * 2);
+    ctx.fillStyle = i < vidas ? '#e6edf3' : 'rgba(139,148,158,.22)';
+    ctx.fill();
+  }
+
+  // barra de equilibrio
+  const bx = 700, bw = 176, by = 66;
+  ctx.fillStyle = 'rgba(139,148,158,.18)';
+  ctx.fillRect(bx, by, bw, 6);
+  const d = clamp(deriva / DERIVA_MAX, -1, 1);
+  const larg = Math.abs(d) * bw / 2;
+  ctx.fillStyle = Math.abs(d) > 0.72 ? '#f85149' : Math.abs(d) > 0.4 ? '#e3b341' : '#3fb950';
+  ctx.fillRect(bx + bw / 2 + (d < 0 ? -larg : 0), by, larg, 6);
+  ctx.fillStyle = '#8b949e';
+  ctx.fillRect(bx + bw / 2 - 1, by - 3, 2, 12);
+  ctx.font = '11px ui-sans-serif,system-ui,sans-serif';
+  ctx.fillText('equilíbrio', bx + bw, by + 24);
+
+  // ultimo julgamento
+  if (ultimoJulg && b - ultimoJulg.b0 < 1.1) {
+    const j = ultimoJulg;
+    const rot = j.q === 'perf' ? 'NO PÉ' : j.q === 'bom' ? 'BOM' : 'PORCO';
+    const cor = j.q === 'perf' ? '#e3b341' : j.q === 'bom' ? '#3fb950' : '#8b949e';
+    ctx.globalAlpha = clamp(1 - (b - j.b0) / 1.1, 0, 1);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = cor;
+    ctx.font = '700 26px ui-sans-serif,system-ui,sans-serif';
+    ctx.fillText(rot, CX, 96);
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '12px ui-monospace,monospace';
+    ctx.fillText((j.err > 0 ? '+' : '') + j.err.toFixed(0) + ' ms', CX, 114);
+    ctx.globalAlpha = 1;
+  }
+
+  if (anuncio) {
+    const k = clamp(1 - (b - anuncio.b0) / 2, 0, 1);
+    ctx.globalAlpha = k;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#e3b341';
+    ctx.font = '800 34px ui-sans-serif,system-ui,sans-serif';
+    ctx.fillText(anuncio.txt.toUpperCase(), CX, 545 - (1 - k) * 22);
+    ctx.globalAlpha = 1;
+  }
+
+  flashes.forEach(function (f) {
+    ctx.globalAlpha = clamp(1 - (b - f.b0) / 1.2, 0, 1);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = f.cor;
+    ctx.font = '600 18px ui-sans-serif,system-ui,sans-serif';
+    ctx.fillText(f.txt, CX, f.y - (b - f.b0) * 18);
+    ctx.globalAlpha = 1;
+  });
+
+  // contagem antes do primeiro toque
+  if (rodando && b < 8) {
+    const n = Math.ceil(8 - b);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(230,237,243,.85)';
+    ctx.font = '800 64px ui-sans-serif,system-ui,sans-serif';
+    ctx.fillText(n <= 3 ? String(n) : 'prepara', CX, 300);
+  }
+}
+
+function desenhar(b) {
+  ctx.clearRect(0, 0, 900, 620);
+
+  // gramado + pulso no tempo forte
+  const pulso = 1 - (b - Math.floor(b));
+  ctx.fillStyle = 'rgba(63,185,80,' + (0.05 + pulso * 0.05).toFixed(3) + ')';
+  ctx.fillRect(0, CHAO, 900, 620 - CHAO);
+  ctx.strokeStyle = 'rgba(63,185,80,.25)';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, CHAO); ctx.lineTo(900, CHAO); ctx.stroke();
+
+  desenharAlvos(b);
+  desenharJogador(b);
+
+  // rastro
+  rastro.forEach(function (p, i) {
+    const k = i / rastro.length;
+    ctx.globalAlpha = k * 0.35;
+    ctx.fillStyle = '#e6edf3';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3 + k * 7, 0, Math.PI * 2); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  // sombra da bola: da a nocao de altura
+  const alt = clamp((CHAO - bolaVis.y) / 420, 0, 1);
+  ctx.fillStyle = 'rgba(0,0,0,' + (0.34 * (1 - alt * 0.8)).toFixed(3) + ')';
+  ctx.beginPath();
+  ctx.ellipse(bolaVis.x, CHAO + 5, 16 - alt * 8, 4.5 - alt * 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // bola, achatando no instante do toque
+  const kEsm = clamp(1 - (b - esmaga) / 0.22, 0, 1);
+  const sx = 1 + kEsm * 0.3, sy = 1 - kEsm * 0.26;
+  ctx.save();
+  ctx.translate(bolaVis.x, bolaVis.y);
+  ctx.scale(sx, sy);
+  const g = ctx.createRadialGradient(-5, -6, 2, 0, 0, 15);
+  g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#b9c4cf');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#1c2430';
+  const rot = b * 2.4;
+  for (let i = 0; i < 5; i++) {
+    const a = rot + i * Math.PI * 2 / 5;
+    ctx.beginPath();
+    ctx.arc(Math.cos(a) * 8, Math.sin(a) * 8, 3.1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  faiscas.forEach(function (f) {
+    ctx.globalAlpha = clamp(f.vida, 0, 1);
+    ctx.fillStyle = f.cor;
+    ctx.beginPath(); ctx.arc(f.x, f.y, 2.6, 0, Math.PI * 2); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  desenharHUD(b);
+}
+
+/* ==========================================================================
+   7. ENTRADA E CONTROLE
+   ========================================================================== */
+
+const telaInicio = document.getElementById('telaInicio');
+const telaFim    = document.getElementById('telaFim');
+const fimPontos  = document.getElementById('fimPontos');
+const fimResumo  = document.getElementById('fimResumo');
+const telaOpcoes = document.getElementById('telaOpcoes');
+const painelCalib = document.getElementById('calib');
+const mediaErro = document.getElementById('mediaErro');
+const dica = document.getElementById('dica');
+const SLIDERS = { geral: ['vGeral','lGeral'], mus: ['vMus','lMus'], efe: ['vEfe','lEfe'] };
+
+function aplicarVolumes() {
+  if (!master) return;
+  master.gain.value   = vol.geral / 100;
+  gMusica.gain.value  = (vol.mus / 100) * 0.95;
+  gEfeitos.gain.value = (vol.efe / 100) * 0.95;
+}
+
+function salvarOpcoes() {
+  try {
+    localStorage.setItem('embaixadinha_opcoes',
+      JSON.stringify({ vol: vol, offsetMs: offsetMs }));
+  } catch (e) { /* modo anonimo, paciencia */ }
+}
+
+function porLatencia(ms) {
+  offsetMs = clamp(Math.round(ms), -250, 250);
+  document.getElementById('vLat').value = offsetMs;
+  document.getElementById('lLat').textContent = offsetMs + ' ms';
+  salvarOpcoes();
+}
+
+function carregarOpcoes() {
+  try {
+    const g = JSON.parse(localStorage.getItem('embaixadinha_opcoes') || 'null');
+    if (g) {
+      if (g.vol) for (const k in vol) if (typeof g.vol[k] === 'number') vol[k] = g.vol[k];
+      if (typeof g.offsetMs === 'number') offsetMs = g.offsetMs;
+    }
+  } catch (e) { /* idem */ }
+  for (const k in SLIDERS) {
+    document.getElementById(SLIDERS[k][0]).value = vol[k];
+    document.getElementById(SLIDERS[k][1]).textContent = vol[k];
+  }
+  document.getElementById('vLat').value = offsetMs;
+  document.getElementById('lLat').textContent = offsetMs + ' ms';
+}
+
+for (const k in SLIDERS) {
+  (function (chave) {
+    const el = document.getElementById(SLIDERS[chave][0]);
+    el.addEventListener('input', function () {
+      vol[chave] = +el.value;
+      document.getElementById(SLIDERS[chave][1]).textContent = vol[chave];
+      aplicarVolumes(); salvarOpcoes();
+    });
+  })(k);
+}
+document.getElementById('vLat').addEventListener('input', function () {
+  porLatencia(+this.value);
+});
+document.getElementById('btUsar').addEventListener('click', function () {
+  if (errosRec.length < 5) return;
+  porLatencia(offsetMs + media());
+  errosRec = [];
+});
+
+// --- pausa / opcoes ---
+let voltarPara = 'inicio';
+
+function abrirOpcoes() {
+  if (!telaOpcoes.hidden) return;
+  voltarPara = !telaInicio.hidden ? 'inicio' : !telaFim.hidden ? 'fim' : 'jogo';
+  telaInicio.hidden = true; telaFim.hidden = true; telaOpcoes.hidden = false;
+  if (voltarPara === 'jogo' && actx) { pausado = true; actx.suspend(); }
+}
+
+function fecharOpcoes() {
+  if (telaOpcoes.hidden) return;
+  telaOpcoes.hidden = true;
+  if (voltarPara === 'inicio') telaInicio.hidden = false;
+  else if (voltarPara === 'fim') telaFim.hidden = false;
+  else { pausado = false; if (actx && !document.hidden) actx.resume(); }
+}
+
+document.getElementById('btOpcoes').addEventListener('click', abrirOpcoes);
+document.getElementById('btVoltar').addEventListener('click', fecharOpcoes);
+document.getElementById('btRecomecar').addEventListener('click', function () {
+  telaOpcoes.hidden = true; pausado = false; comecar();
+});
+carregarOpcoes();
+
+addEventListener('keydown', function (e) {
+  if (e.repeat) return;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (k === ' ' || k === 'Spacebar') e.preventDefault();
+  if (k === 'Escape' || k === 'p') {
+    telaOpcoes.hidden ? abrirOpcoes() : fecharOpcoes();
+    return;
+  }
+  if (!telaOpcoes.hidden) return;
+  if (!rodando) {
+    if (k === ' ' || k === 'Enter') comecar();
+    return;
+  }
+  const parte = PORTECLA[k === 'Spacebar' ? ' ' : k];
+  if (parte) pressionar(parte);
+});
+
+function comecar() {
+  if (!actx) iniciarAudio();
+  if (actx.state === 'suspended') actx.resume();
+
+  pontos = 0; combo = 0; melhorCombo = 0; vidas = 3; deriva = 0;
+  notas = []; infoLance = {}; idLance = 0;
+  rastro = []; faiscas = []; flashes = []; alcance = {};
+  anuncio = null; ultimoJulg = null; errosRec = [];
+
+  proxB = 8;                                   // 2 compassos de contagem
+  notas.push({ beat: 6, parte: 'chao', lance: 0,
+               ultima: false, julgada: true, dx: 0 });
+  gerar(32);
+
+  cai = { b0: -999, p0: { x: CX, y: CHAO }, vx: 0 };
+  passo = 0;
+  tZero = actx.currentTime + 0.12;
+  rodando = true;
+  if (!tocadorId) tocadorId = setInterval(bombeador, 25);
+
+  telaInicio.hidden = true;
+  telaFim.hidden = true;
+  painelCalib.hidden = false;
+  dica.hidden = false;
+}
+
+document.addEventListener('visibilitychange', function () {
+  if (!actx || !rodando) return;
+  if (document.hidden) actx.suspend();
+  else if (telaOpcoes.hidden) actx.resume();
+});
+
+document.getElementById('btIniciar').addEventListener('click', comecar);
+document.getElementById('btDeNovo').addEventListener('click', comecar);
+
+setInterval(function () {
+  if (!painelCalib.hidden) {
+    mediaErro.textContent = errosRec.length >= 5
+      ? (media() > 0 ? '+' : '') + media().toFixed(0) + ' ms'
+      : '--';
+  }
+}, 400);
+</script>
+</body>
+</html>
