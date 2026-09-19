@@ -45,6 +45,14 @@
   .botoes{display:flex;gap:10px;margin-top:6px}
   button.sec{background:var(--painel);color:var(--txt);border:1px solid var(--linha)}
   #dica{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--fraco)}
+  #mapaTeclas{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:2px 0}
+  .bindCol{display:flex;flex-direction:column;align-items:center;gap:5px}
+  .bindCol i{font-style:normal;font-size:11px;color:var(--fraco)}
+  .bind{background:var(--painel);border:1px solid var(--linha);color:var(--txt);
+    border-radius:8px;padding:9px 0;width:78px;font:600 14px ui-monospace,monospace;cursor:pointer}
+  .bind:hover{border-color:var(--azul)}
+  .bind.ouvindo{border-color:var(--amarelo);color:var(--amarelo)}
+  .sep{width:100%;max-width:470px;height:1px;background:var(--linha);margin:4px 0}
 </style>
 </head>
 <body>
@@ -88,6 +96,11 @@
       <input type="range" id="vLat" min="-250" max="250" step="5" value="0"><span id="lLat">0 ms</span></div>
     <p>Se o <b>erro médio</b> no rodapé viver negativo, aumente a latência; se viver
        positivo, diminua. Fone Bluetooth costuma pedir 150–250&nbsp;ms.</p>
+    <div class="sep"></div>
+    <div id="mapaTeclas"></div>
+    <p style="font-size:12px">Clique numa tecla e aperte a nova. Se já estiver em uso,
+       as duas trocam de lugar.</p>
+    <button id="btTeclasPadrao" class="sec" style="padding:6px 14px;font-size:12px">restaurar padrão</button>
     <div class="botoes">
       <button id="btVoltar">voltar</button>
       <button id="btRecomecar" class="sec">recomeçar</button>
@@ -304,6 +317,7 @@ let deriva = 0, bolaVis = { x: CX, y: CHAO }, rastro = [];
 let cai = { b0: -999, p0: { x: CX, y: CHAO }, vx: 0 };
 let flashes = [], faiscas = [], anuncio = null, alcance = {}, errosRec = [];
 let agacha = 0, derivaVel = 0, derivaAnt = 0, esmaga = -99, pausado = false;
+let gradBola = null, ultimoQuadro = 0;
 let ultimoJulg = null;
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -469,12 +483,14 @@ function ajustarCanvas() {
 ajustarCanvas();
 addEventListener('resize', ajustarCanvas);
 
-let ultimoQuadro = 0;
-
 function quadro(ts) {
   requestAnimationFrame(quadro);
   if (!actx) return;
-  const dt = Math.min(0.05, (ts - ultimoQuadro) / 1000 || 0);
+
+  // parado no menu nao precisa de 60: cai pra 12
+  const alvo = (rodando && telaOpcoes.hidden) ? 60 : 12;
+  if (ultimoQuadro && ts - ultimoQuadro < 1000 / alvo - 1) return;
+  const dt = Math.min(0.05, ultimoQuadro ? (ts - ultimoQuadro) / 1000 : 0.016);
   ultimoQuadro = ts;
   const b = batidaVisual();
 
@@ -493,7 +509,7 @@ function quadro(ts) {
 
   bolaVis = (notas.length && b >= notas[0].beat) ? bolaNaParabola(b) : bolaCaindo(b);
   rastro.push({ x: bolaVis.x, y: bolaVis.y });
-  if (rastro.length > 16) rastro.shift();
+  if (rastro.length > 10) rastro.shift();
 
   for (let i = faiscas.length - 1; i >= 0; i--) {
     const f = faiscas[i];
@@ -513,11 +529,6 @@ requestAnimationFrame(quadro);
 /* ==========================================================================
    6. DESENHO
    ========================================================================== */
-
-function linha(x1, y1, x2, y2, larg, cor) {
-  ctx.strokeStyle = cor; ctx.lineWidth = larg; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-}
 
 const REPOUSO = {
   peE: { x: CX - 56, y: CHAO - 8 },
@@ -560,19 +571,61 @@ function articular(a, z, osso, lado) {
            y: a.y + uy * meio + ux * h * -lado };
 }
 
+const COR = {
+  pele:     '#c98b5e',
+  peleSom:  '#a86f47',
+  camisa:   '#f2c14e',
+  camisaSom:'#d4a534',
+  gola:     '#2e5fa3',
+  shorts:   '#2b5796',
+  shortsSom:'#21447a',
+  meia:     '#eef2f6',
+  chuteira: '#161d28',
+  cabelo:   '#2b1f19',
+};
+
+// membro com espessura variavel: quadrilatero + as duas pontas arredondadas
+function membro(a, z, wa, wz, cor) {
+  const dx = z.x - a.x, dy = z.y - a.y;
+  const d = Math.sqrt(dx * dx + dy * dy) || 0.001;
+  const nx = -dy / d * 0.5, ny = dx / d * 0.5;
+  ctx.fillStyle = cor;
+  ctx.beginPath();
+  ctx.moveTo(a.x + nx * wa, a.y + ny * wa);
+  ctx.lineTo(z.x + nx * wz, z.y + ny * wz);
+  ctx.lineTo(z.x - nx * wz, z.y - ny * wz);
+  ctx.lineTo(a.x - nx * wa, a.y - ny * wa);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath(); ctx.arc(a.x, a.y, wa / 2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(z.x, z.y, wz / 2, 0, Math.PI * 2); ctx.fill();
+}
+
+const entre = (a, z, t) => ({ x: a.x + (z.x - a.x) * t, y: a.y + (z.y - a.y) * t });
+
+function chuteira(tornozelo, joelho, sig) {
+  const ang = Math.atan2(tornozelo.y - joelho.y, tornozelo.x - joelho.x);
+  ctx.save();
+  ctx.translate(tornozelo.x, tornozelo.y);
+  ctx.rotate(ang - Math.PI / 2);
+  ctx.fillStyle = COR.chuteira;
+  ctx.beginPath(); ctx.ellipse(sig * 2, 7, 8.5, 12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#0d1219';
+  ctx.beginPath(); ctx.ellipse(sig * 2, 13, 8.5, 4, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
 function desenharPerna(lado, b, quadril) {
   const sig = lado === 'E' ? -1 : 1;
   const ePe = empenho('pe' + lado, b), eCo = empenho('coxa' + lado, b);
   const rep = REPOUSO['pe' + lado];
 
-  // o pe sai do chao e sobe pra encontrar a bola; passa um pouco na saida
   const toque = posParte('pe' + lado, deriva);
   const destino = ePe.saindo ? { x: toque.x + sig * 12, y: toque.y - 20 } : toque;
   let pe = { x: rep.x + (destino.x - rep.x) * ePe.u,
              y: rep.y + (destino.y - rep.y) * ePe.u };
   let joelho = articular(quadril, pe, OSSO_PERNA, sig);
 
-  // na coxa quem sobe e o joelho; o pe fica pendurado embaixo
   if (eCo.u > 0.01) {
     const pc = posParte('coxa' + lado, deriva);
     const dj = eCo.saindo ? { x: pc.x, y: pc.y - 12 } : pc;
@@ -582,66 +635,109 @@ function desenharPerna(lado, b, quadril) {
     pe = { x: pe.x + (pend.x - pe.x) * eCo.u, y: pe.y + (pend.y - pe.y) * eCo.u };
   }
 
-  linha(quadril.x, quadril.y, joelho.x, joelho.y, 15, '#2a3a52');
-  linha(joelho.x, joelho.y, pe.x, pe.y, 12, '#233043');
-  ctx.fillStyle = '#58a6ff';
-  ctx.beginPath(); ctx.arc(pe.x, pe.y, 9, 0, Math.PI * 2); ctx.fill();
+  membro(quadril, joelho, 30, 21, COR.pele);            // coxa
+  membro(joelho, pe, 20, 12, COR.pele);                 // canela
+  membro(entre(joelho, pe, 0.38), pe, 17, 12, COR.meia); // meiao
+  chuteira(pe, joelho, sig);
 
-  // sombra some quando o pe sai do chao
   const noAr = clamp((rep.y - pe.y) / 90, 0, 1);
   ctx.fillStyle = 'rgba(0,0,0,' + (0.30 * (1 - noAr)).toFixed(3) + ')';
   ctx.beginPath();
   ctx.ellipse(pe.x, CHAO + 4, 22 - noAr * 8, 5, 0, 0, Math.PI * 2);
   ctx.fill();
-
-  return Math.max(ePe.u, eCo.u);
+  return { joelho: joelho, pe: pe };
 }
 
 function desenharBraco(lado, ombro, levanta) {
   const sig = lado === 'E' ? -1 : 1;
-  const mao = { x: ombro.x + sig * (38 + levanta * 32) - derivaVel * 1.1,
-                y: ombro.y + 80 - levanta * 64 };
+  const mao = { x: ombro.x + sig * (56 + levanta * 30) - derivaVel * 1.1,
+                y: ombro.y + 74 - levanta * 62 };
   const cot = articular(ombro, mao, OSSO_BRACO, -sig);
-  linha(ombro.x, ombro.y, cot.x, cot.y, 10, '#2a3a52');
-  linha(cot.x, cot.y, mao.x, mao.y, 8, '#233043');
+  membro(ombro, cot, 19, 14, COR.pele);
+  membro(cot, mao, 13, 10, COR.pele);
+  membro(ombro, entre(ombro, cot, 0.5), 23, 18, COR.camisa);   // manga
+  ctx.fillStyle = COR.pele;
+  ctx.beginPath(); ctx.arc(mao.x, mao.y, 6.5, 0, Math.PI * 2); ctx.fill();
+}
+
+function desenharTronco(quadril, ombro) {
+  const dx = ombro.x - quadril.x, dy = ombro.y - quadril.y;
+  const d = Math.sqrt(dx * dx + dy * dy) || 1;
+  const nx = -dy / d, ny = dx / d;
+  const lq = 21, lo = 27;
+  ctx.fillStyle = COR.camisa;
+  ctx.beginPath();
+  ctx.moveTo(quadril.x + nx * lq, quadril.y + ny * lq);
+  ctx.lineTo(ombro.x + nx * lo, ombro.y + ny * lo);
+  ctx.quadraticCurveTo(ombro.x, ombro.y - 9, ombro.x - nx * lo, ombro.y - ny * lo);
+  ctx.lineTo(quadril.x - nx * lq, quadril.y - ny * lq);
+  ctx.quadraticCurveTo(quadril.x, quadril.y + 8, quadril.x + nx * lq, quadril.y + ny * lq);
+  ctx.closePath(); ctx.fill();
+  // sombra de um lado so, pra dar volume
+  ctx.fillStyle = COR.camisaSom;
+  ctx.beginPath();
+  ctx.moveTo(quadril.x + nx * lq, quadril.y + ny * lq);
+  ctx.lineTo(ombro.x + nx * lo, ombro.y + ny * lo);
+  ctx.lineTo(ombro.x + nx * lo * 0.45, ombro.y + ny * lo * 0.45);
+  ctx.lineTo(quadril.x + nx * lq * 0.45, quadril.y + ny * lq * 0.45);
+  ctx.closePath(); ctx.fill();
+  // gola
+  ctx.fillStyle = COR.gola;
+  ctx.beginPath(); ctx.ellipse(ombro.x, ombro.y - 6, 13, 6, 0, 0, Math.PI * 2); ctx.fill();
 }
 
 function desenharJogador(b) {
   const incl = clamp(deriva * 0.26, -42, 42);
   const eCab = empenho('cabeca', b);
-  const bal  = Math.sin(b * Math.PI) * 2.5;          // gingado no tempo
+  const bal  = Math.sin(b * Math.PI) * 2.5;
   const resp = Math.sin(b * Math.PI / 2) * 2;
-  const alto = eCab.u * 16;                           // sobe pra cabecear
+  const alto = eCab.u * 16;
 
   const uE = Math.max(empenho('peE', b).u, empenho('coxaE', b).u);
   const uD = Math.max(empenho('peD', b).u, empenho('coxaD', b).u);
-  const peso = (uE - uD) * 13;                        // vai pro pe que fica no chao
+  const peso = (uE - uD) * 13;
 
   const quadril = { x: CX + incl * 0.5 + bal + peso,  y: 392 + agacha - alto };
   const ombro   = { x: CX + incl * 1.0 + bal * 1.5 + peso * 0.5, y: 250 + agacha * 0.5 - alto + resp };
   const cabeca  = { x: CX + incl * 1.3 + bal * 2 + peso * 0.3,   y: 192 - alto - eCab.u * 10 };
-  cabeca.x += clamp((bolaVis.x - cabeca.x) * 0.05, -9, 9);   // acompanha a bola
+  cabeca.x += clamp((bolaVis.x - cabeca.x) * 0.05, -9, 9);
 
   ctx.fillStyle = 'rgba(0,0,0,.28)';
   ctx.beginPath();
   ctx.ellipse(quadril.x, CHAO + 6, 62, 10, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  desenharPerna('E', b, quadril);
-  desenharPerna('D', b, quadril);
+  const pE = desenharPerna('E', b, quadril);
+  const pD = desenharPerna('D', b, quadril);
 
-  linha(quadril.x, quadril.y, ombro.x, ombro.y, 24, '#2a3a52');
-  linha(ombro.x, ombro.y, cabeca.x, cabeca.y + 15, 12, '#2a3a52');
+  // calcao por cima das coxas
+  membro(quadril, entre(quadril, pE.joelho, 0.42), 36, 27, COR.shorts);
+  membro(quadril, entre(quadril, pD.joelho, 0.42), 36, 27, COR.shorts);
+  ctx.fillStyle = COR.shortsSom;
+  ctx.beginPath();
+  ctx.ellipse(quadril.x, quadril.y - 2, 24, 15, 0, 0, Math.PI * 2);
+  ctx.fill();
 
-  // os bracos contrabalancam: sobe o oposto da perna que trabalha,
-  // e os dois sobem junto quando o cara esta perdendo o equilibrio
+  desenharTronco(quadril, ombro);
+  membro(ombro, { x: cabeca.x, y: cabeca.y + 16 }, 15, 13, COR.pele);   // pescoco
+
   const tensao = Math.abs(deriva) / DERIVA_MAX;
   const base = tensao * 0.45 + eCab.u * 0.3 + Math.abs(bal) * 0.04;
   desenharBraco('E', ombro, clamp(uD * 0.5 + base, 0, 1));
   desenharBraco('D', ombro, clamp(uE * 0.5 + base, 0, 1));
 
-  ctx.fillStyle = '#d9b48f';
-  ctx.beginPath(); ctx.arc(cabeca.x, cabeca.y, 24, 0, Math.PI * 2); ctx.fill();
+  // cabeca: rosto, orelha e cabelo
+  ctx.fillStyle = COR.pele;
+  ctx.beginPath(); ctx.arc(cabeca.x, cabeca.y, 25, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = COR.peleSom;
+  ctx.beginPath();
+  ctx.arc(cabeca.x, cabeca.y, 25, Math.PI * (incl > 0 ? -0.42 : 0.58),
+                                Math.PI * (incl > 0 ?  0.42 : 1.42));
+  ctx.fill();
+  ctx.fillStyle = COR.cabelo;
+  ctx.beginPath();
+  ctx.arc(cabeca.x, cabeca.y - 3, 25, Math.PI * 1.06, Math.PI * 1.94);
+  ctx.fill();
 }
 
 function desenharAlvos(b) {
@@ -774,11 +870,11 @@ function desenhar(b) {
   desenharJogador(b);
 
   // rastro
+  ctx.fillStyle = '#e6edf3';
   rastro.forEach(function (p, i) {
     const k = i / rastro.length;
-    ctx.globalAlpha = k * 0.35;
-    ctx.fillStyle = '#e6edf3';
-    ctx.beginPath(); ctx.arc(p.x, p.y, 3 + k * 7, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = k * k * 0.14;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 2 + k * 5, 0, Math.PI * 2); ctx.fill();
   });
   ctx.globalAlpha = 1;
 
@@ -790,14 +886,16 @@ function desenhar(b) {
   ctx.fill();
 
   // bola, achatando no instante do toque
-  const kEsm = clamp(1 - (b - esmaga) / 0.22, 0, 1);
-  const sx = 1 + kEsm * 0.3, sy = 1 - kEsm * 0.26;
+  const kEsm = clamp(1 - (b - esmaga) / 0.09, 0, 1);
+  const sx = 1 + kEsm * 0.13, sy = 1 - kEsm * 0.11;
   ctx.save();
   ctx.translate(bolaVis.x, bolaVis.y);
   ctx.scale(sx, sy);
-  const g = ctx.createRadialGradient(-5, -6, 2, 0, 0, 15);
-  g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#b9c4cf');
-  ctx.fillStyle = g;
+  if (!gradBola) {
+    gradBola = ctx.createRadialGradient(-5, -6, 2, 0, 0, 15);
+    gradBola.addColorStop(0, '#ffffff'); gradBola.addColorStop(1, '#b9c4cf');
+  }
+  ctx.fillStyle = gradBola;
   ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#1c2430';
   const rot = b * 2.4;
@@ -832,6 +930,62 @@ const painelCalib = document.getElementById('calib');
 const mediaErro = document.getElementById('mediaErro');
 const dica = document.getElementById('dica');
 const SLIDERS = { geral: ['vGeral','lGeral'], mus: ['vMus','lMus'], efe: ['vEfe','lEfe'] };
+const ORDEM_PARTES = ['peE', 'coxaE', 'cabeca', 'coxaD', 'peD'];
+const TECLAS_PADRAO = { peE:'a', coxaE:'s', cabeca:' ', coxaD:'k', peD:'l' };
+let ouvindo = null;
+
+const rotuloTecla = t => t === ' ' ? 'espaço' : t.length === 1 ? t.toUpperCase() : t;
+
+function aplicarTeclas() {
+  for (const k in PORTECLA) delete PORTECLA[k];
+  for (const p in PARTES) {
+    PORTECLA[PARTES[p].tecla] = p;
+    PARTES[p].rot = PARTES[p].tecla === ' ' ? '␣'
+                  : PARTES[p].tecla.length === 1 ? PARTES[p].tecla.toUpperCase()
+                  : PARTES[p].tecla.slice(0, 3);
+  }
+  ORDEM_PARTES.forEach(function (p) {
+    const bt = document.getElementById('bind-' + p);
+    if (bt) { bt.textContent = rotuloTecla(PARTES[p].tecla); bt.classList.remove('ouvindo'); }
+  });
+}
+
+function montarMapaTeclas() {
+  const alvo = document.getElementById('mapaTeclas');
+  alvo.innerHTML = '';
+  ORDEM_PARTES.forEach(function (p) {
+    const col = document.createElement('div');
+    col.className = 'bindCol';
+    const bt = document.createElement('button');
+    bt.className = 'bind'; bt.id = 'bind-' + p;
+    bt.addEventListener('click', function () {
+      if (ouvindo) {
+        const ant = document.getElementById('bind-' + ouvindo);
+        if (ant) { ant.classList.remove('ouvindo'); ant.textContent = rotuloTecla(PARTES[ouvindo].tecla); }
+      }
+      ouvindo = p; bt.classList.add('ouvindo'); bt.textContent = 'aperte…';
+    });
+    const rot = document.createElement('i');
+    rot.textContent = PARTES[p].nome;
+    col.appendChild(bt); col.appendChild(rot);
+    alvo.appendChild(col);
+  });
+  aplicarTeclas();
+}
+
+function definirTecla(parte, tecla) {
+  const dono = PORTECLA[tecla];
+  if (dono && dono !== parte) PARTES[dono].tecla = PARTES[parte].tecla;
+  PARTES[parte].tecla = tecla;
+  ouvindo = null;
+  aplicarTeclas();
+  salvarOpcoes();
+}
+
+document.getElementById('btTeclasPadrao').addEventListener('click', function () {
+  for (const p in TECLAS_PADRAO) PARTES[p].tecla = TECLAS_PADRAO[p];
+  ouvindo = null; aplicarTeclas(); salvarOpcoes();
+});
 
 function aplicarVolumes() {
   if (!master) return;
@@ -843,8 +997,14 @@ function aplicarVolumes() {
 function salvarOpcoes() {
   try {
     localStorage.setItem('embaixadinha_opcoes',
-      JSON.stringify({ vol: vol, offsetMs: offsetMs }));
+      JSON.stringify({ vol: vol, offsetMs: offsetMs, teclas: mapaAtual() }));
   } catch (e) { /* modo anonimo, paciencia */ }
+}
+
+function mapaAtual() {
+  const m = {};
+  for (const p in PARTES) m[p] = PARTES[p].tecla;
+  return m;
 }
 
 function porLatencia(ms) {
@@ -860,6 +1020,7 @@ function carregarOpcoes() {
     if (g) {
       if (g.vol) for (const k in vol) if (typeof g.vol[k] === 'number') vol[k] = g.vol[k];
       if (typeof g.offsetMs === 'number') offsetMs = g.offsetMs;
+      if (g.teclas) for (const p in PARTES) if (g.teclas[p]) PARTES[p].tecla = g.teclas[p];
     }
   } catch (e) { /* idem */ }
   for (const k in SLIDERS) {
@@ -868,6 +1029,7 @@ function carregarOpcoes() {
   }
   document.getElementById('vLat').value = offsetMs;
   document.getElementById('lLat').textContent = offsetMs + ' ms';
+  montarMapaTeclas();
 }
 
 for (const k in SLIDERS) {
@@ -918,6 +1080,11 @@ addEventListener('keydown', function (e) {
   if (e.repeat) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
   if (k === ' ' || k === 'Spacebar') e.preventDefault();
+  if (ouvindo) {
+    if (k !== 'Escape') definirTecla(ouvindo, k === 'Spacebar' ? ' ' : k);
+    else { ouvindo = null; aplicarTeclas(); }
+    return;
+  }
   if (k === 'Escape' || k === 'p') {
     telaOpcoes.hidden ? abrirOpcoes() : fecharOpcoes();
     return;
