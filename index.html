@@ -317,7 +317,12 @@ let deriva = 0, bolaVis = { x: CX, y: CHAO }, rastro = [];
 let cai = { b0: -999, p0: { x: CX, y: CHAO }, vx: 0 };
 let flashes = [], faiscas = [], anuncio = null, alcance = {}, errosRec = [];
 let agacha = 0, derivaVel = 0, derivaAnt = 0, esmaga = -99, pausado = false;
-let gradBola = null, ultimoQuadro = 0;
+let gradBola = null, ultimoQuadro = 0, dtQuadro = 0.016;
+// A deriva LOGICA (deriva) manda no jogo; a VISUAL persegue ela suavemente.
+// Sem isso a bola teleporta de lado a cada toque: o trecho novo da parabola
+// ja comeca na deriva nova enquanto a bola acabou de chegar na antiga.
+let derivaVis = 0, pesoVis = 0;
+const perseguir = (de, para, taxa) => de + (para - de) * (1 - Math.exp(-dtQuadro * taxa));
 let ultimoJulg = null;
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -333,7 +338,7 @@ function bolaNaParabola(b) {
   if (!a) return { x: CX, y: CHAO };
   if (!c) return posParte(a.parte, a.dx);
   const p0 = posParte(a.parte, a.dx);
-  const p1 = posParte(c.parte, c.julgada ? c.dx : deriva);
+  const p1 = posParte(c.parte, c.julgada ? c.dx : derivaVis);
   const dt = c.beat - a.beat;
   const u = clamp((b - a.beat) / dt, 0, 1);
   const arco = Math.min(300, 82 * Math.pow(dt, 1.4));
@@ -404,7 +409,7 @@ function pressionar(parte) {
 
   deriva = deriva * amort + errMs * ganho;
   alvo.julgada = true;
-  alvo.dx = deriva;
+  alvo.dx = derivaVis;
 
   const inf = infoLance[alvo.lance];
   if (q === 'ok') inf.sujo = true; else inf.limpos++;
@@ -417,14 +422,14 @@ function pressionar(parte) {
   errosRec.push(errMs);
   if (errosRec.length > 24) errosRec.shift();
 
-  const p = posParte(alvo.parte, deriva);
+  const p = posParte(alvo.parte, derivaVis);
   alcance[alvo.parte] = { b0: batidaVisual(), p: p };
   somToque(actx.currentTime, PARTES[alvo.parte].hz, q === 'perf');
   faiscar(p, q === 'perf' ? '#e3b341' : q === 'bom' ? '#3fb950' : '#8b949e',
           q === 'perf' ? 14 : q === 'bom' ? 8 : 4);
   ultimoJulg = { q: q, err: errMs, b0: batidaVisual() };
   esmaga = batidaVisual();
-  agacha = q === 'perf' ? 5 : 9;
+  agacha = q === 'perf' ? 4 : 7;
 
   if (alvo.ultima && !inf.sujo && inf.limpos === inf.total && inf.dif >= 1) {
     pontos += 400 + inf.dif * 250;
@@ -452,7 +457,7 @@ function queda(motivo) {
   if (vidas <= 0) { fim(); return; }
 
   // relanca: limpa a partitura e monta um saque do chao
-  deriva = 0;
+  deriva = 0; derivaVis = 0; pesoVis = 0;
   notas = []; infoLance = {};
   proxB = Math.ceil(b + 4);
   notas.push({ beat: proxB - 2, parte: 'chao', lance: 0,
@@ -516,9 +521,11 @@ function quadro(ts) {
     f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 900 * dt; f.vida -= dt * 2.2;
     if (f.vida <= 0) faiscas.splice(i, 1);
   }
-  agacha += (0 - agacha) * Math.min(1, dt * 9);
-  derivaVel = derivaVel * 0.86 + (deriva - derivaAnt) * 0.6;
-  derivaAnt = deriva;
+  dtQuadro = dt;
+  agacha = perseguir(agacha, 0, 10);
+  derivaVis = perseguir(derivaVis, deriva, 11);
+  derivaVel = perseguir(derivaVel, clamp((derivaVis - derivaAnt) / dt * 0.05, -26, 26), 12);
+  derivaAnt = derivaVis;
   flashes = flashes.filter(f => b - f.b0 < 1.2);
   if (anuncio && b - anuncio.b0 > 2) anuncio = null;
 
@@ -620,14 +627,14 @@ function desenharPerna(lado, b, quadril) {
   const ePe = empenho('pe' + lado, b), eCo = empenho('coxa' + lado, b);
   const rep = REPOUSO['pe' + lado];
 
-  const toque = posParte('pe' + lado, deriva);
+  const toque = posParte('pe' + lado, derivaVis);
   const destino = ePe.saindo ? { x: toque.x + sig * 12, y: toque.y - 20 } : toque;
   let pe = { x: rep.x + (destino.x - rep.x) * ePe.u,
              y: rep.y + (destino.y - rep.y) * ePe.u };
   let joelho = articular(quadril, pe, OSSO_PERNA, sig);
 
   if (eCo.u > 0.01) {
-    const pc = posParte('coxa' + lado, deriva);
+    const pc = posParte('coxa' + lado, derivaVis);
     const dj = eCo.saindo ? { x: pc.x, y: pc.y - 12 } : pc;
     joelho = { x: joelho.x + (dj.x - joelho.x) * eCo.u,
                y: joelho.y + (dj.y - joelho.y) * eCo.u };
@@ -687,7 +694,7 @@ function desenharTronco(quadril, ombro) {
 }
 
 function desenharJogador(b) {
-  const incl = clamp(deriva * 0.26, -42, 42);
+  const incl = clamp(derivaVis * 0.26, -42, 42);
   const eCab = empenho('cabeca', b);
   const bal  = Math.sin(b * Math.PI) * 2.5;
   const resp = Math.sin(b * Math.PI / 2) * 2;
@@ -695,7 +702,8 @@ function desenharJogador(b) {
 
   const uE = Math.max(empenho('peE', b).u, empenho('coxaE', b).u);
   const uD = Math.max(empenho('peD', b).u, empenho('coxaD', b).u);
-  const peso = (uE - uD) * 13;
+  pesoVis = perseguir(pesoVis, (uE - uD) * 11, 13);
+  const peso = pesoVis;
 
   const quadril = { x: CX + incl * 0.5 + bal + peso,  y: 392 + agacha - alto };
   const ombro   = { x: CX + incl * 1.0 + bal * 1.5 + peso * 0.5, y: 250 + agacha * 0.5 - alto + resp };
@@ -721,7 +729,7 @@ function desenharJogador(b) {
   desenharTronco(quadril, ombro);
   membro(ombro, { x: cabeca.x, y: cabeca.y + 16 }, 15, 13, COR.pele);   // pescoco
 
-  const tensao = Math.abs(deriva) / DERIVA_MAX;
+  const tensao = Math.abs(derivaVis) / DERIVA_MAX;
   const base = tensao * 0.45 + eCab.u * 0.3 + Math.abs(bal) * 0.04;
   desenharBraco('E', ombro, clamp(uD * 0.5 + base, 0, 1));
   desenharBraco('D', ombro, clamp(uE * 0.5 + base, 0, 1));
@@ -743,7 +751,7 @@ function desenharJogador(b) {
 function desenharAlvos(b) {
   const prox = notaPendente();
   for (const k in PARTES) {
-    const p = PARTES[k], pt = posParte(k, deriva);
+    const p = PARTES[k], pt = posParte(k, derivaVis);
     const ativo = prox && prox.parte === k;
     ctx.strokeStyle = ativo ? p.cor : 'rgba(139,148,158,.32)';
     ctx.lineWidth = ativo ? 2.5 : 1.5;
@@ -757,7 +765,7 @@ function desenharAlvos(b) {
   if (prox) {
     const faltam = prox.beat - b;
     if (faltam > -0.4 && faltam < 1.6) {
-      const pt = posParte(prox.parte, deriva);
+      const pt = posParte(prox.parte, derivaVis);
       const r = 17 + clamp(faltam, 0, 1.6) * 44;
       ctx.strokeStyle = PARTES[prox.parte].cor;
       ctx.globalAlpha = clamp(1 - Math.abs(faltam) / 1.6, 0.15, 1);
@@ -801,7 +809,7 @@ function desenharHUD(b) {
   const bx = 700, bw = 176, by = 66;
   ctx.fillStyle = 'rgba(139,148,158,.18)';
   ctx.fillRect(bx, by, bw, 6);
-  const d = clamp(deriva / DERIVA_MAX, -1, 1);
+  const d = clamp(derivaVis / DERIVA_MAX, -1, 1);
   const larg = Math.abs(d) * bw / 2;
   ctx.fillStyle = Math.abs(d) > 0.72 ? '#f85149' : Math.abs(d) > 0.4 ? '#e3b341' : '#3fb950';
   ctx.fillRect(bx + bw / 2 + (d < 0 ? -larg : 0), by, larg, 6);
@@ -1102,7 +1110,8 @@ function comecar() {
   if (!actx) iniciarAudio();
   if (actx.state === 'suspended') actx.resume();
 
-  pontos = 0; combo = 0; melhorCombo = 0; vidas = 3; deriva = 0;
+  pontos = 0; combo = 0; melhorCombo = 0; vidas = 3;
+  deriva = 0; derivaVis = 0; pesoVis = 0; derivaVel = 0; derivaAnt = 0;
   notas = []; infoLance = {}; idLance = 0;
   rastro = []; faiscas = []; flashes = []; alcance = {};
   anuncio = null; ultimoJulg = null; errosRec = [];
