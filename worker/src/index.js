@@ -39,9 +39,15 @@ export class Sala {
 
     if (m.t === 'entrar') {
       const senha = String(m.senha || '');
+      if (meu.entrou) {                            // ja esta dentro: so reanuncia
+        const agora0 = this.vivos();
+        return ws.send(JSON.stringify({ t: 'sala', quem: meu.quem,
+          gente: agora0.length, seed: await this.ctx.storage.get('seed') }));
+      }
       let guardada = await this.ctx.storage.get('senha');
       let seed = await this.ctx.storage.get('seed');
-      if (guardada === undefined) {
+      // sala sem ninguem dentro recomeca do zero: senha errada nao trava pra sempre
+      if (guardada === undefined || this.vivos().length === 0) {
         guardada = senha;
         seed = (Math.random() * 1e9) | 0;
         await this.ctx.storage.put({ senha: guardada, seed: seed });

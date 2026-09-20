@@ -1618,6 +1618,9 @@ function conectar() {
   if (!sala) return statusOnline('escolhe um nome de sala');
   try { localStorage.setItem('altinha_relay', url); } catch (e) {}
 
+  // sem isto, cada clique abre MAIS uma conexao e a antiga fica aberta:
+  // voce ocupa as duas vagas sozinho e o amigo leva "sala cheia"
+  if (rede && rede.ws) { try { rede.ws.onclose = null; rede.ws.close(); } catch (e) {} }
   statusOnline('conectando…');
   const alvo = url + (url.indexOf('?') < 0 ? '?' : '&') + 'sala=' + encodeURIComponent(sala);
   let ws;
@@ -1658,7 +1661,12 @@ function receber(m) {
     rede.offset = rede.amostras[0].off;
     return;
   }
-  if (m.t === 'erro') return statusOnline(m.msg);
+  if (m.t === 'erro') {
+    statusOnline(m.msg);
+    if (rede && rede.ws) { try { rede.ws.onclose = null; rede.ws.close(); } catch (e) {} }
+    rede = null;
+    return;
+  }
   if (m.t === 'saiu') {
     statusOnline('o outro saiu da sala');
     if (rede) rede.gente = 1;
@@ -1811,6 +1819,10 @@ document.getElementById('btOnline').addEventListener('click', function () {
   statusOnline('');
 });
 document.getElementById('btOnEntrar').addEventListener('click', conectar);
+// fechar a aba tem que liberar a vaga na hora
+addEventListener('pagehide', function () {
+  if (rede && rede.ws) { try { rede.ws.close(); } catch (e) {} }
+});
 document.getElementById('btOnComecar').addEventListener('click', function () {
   if (!rede || rede.gente < 2) return statusOnline('esperando o outro entrar');
   dizer({ t: 'comecar' });

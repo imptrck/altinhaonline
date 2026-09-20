@@ -67,6 +67,10 @@ function tratar(cli, txt) {
     const senha = String(m.senha || '');
     if (!cod) return enviar(cli.sock, JSON.stringify({ t: 'erro', msg: 'sala sem nome' }));
     let s = salas.get(cod);
+    if (s && s.clientes.indexOf(cli) >= 0) {      // ja esta dentro: so reanuncia
+      return enviar(cli.sock, JSON.stringify({ t: 'sala', quem: cli.quem,
+        gente: s.clientes.length, seed: s.seed }));
+    }
     if (!s) { s = { senha: senha, clientes: [], seed: (Math.random() * 1e9) | 0 }; salas.set(cod, s); }
     if (s.senha !== senha) return enviar(cli.sock, JSON.stringify({ t: 'erro', msg: 'senha errada' }));
     if (s.clientes.length >= 2) return enviar(cli.sock, JSON.stringify({ t: 'erro', msg: 'sala cheia' }));
