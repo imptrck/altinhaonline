@@ -116,6 +116,10 @@
       <input type="range" id="vMus" min="0" max="100" value="70"><span id="lMus">70</span></div>
     <div class="linhaOp"><label>efeitos</label>
       <input type="range" id="vEfe" min="0" max="100" value="95"><span id="lEfe">95</span></div>
+    <div class="linhaOp"><label>efeitos visuais</label>
+      <label style="justify-self:start;cursor:pointer;display:flex;align-items:center;gap:7px">
+        <input type="checkbox" id="cSuco" checked style="width:auto;accent-color:var(--verde)">
+        tremida, brilho e flash</label><span></span></div>
     <div class="linhaOp"><label>latência</label>
       <input type="range" id="vLat" min="-250" max="250" step="5" value="0"><span id="lLat">0 ms</span></div>
     <p>Se o <b>erro médio</b> no rodapé viver negativo, aumente a latência; se viver
@@ -243,6 +247,21 @@ function somToque(t, hz, forte) {
   const g2 = actx.createGain(); env(g2, t, 0.001, 0.035, forte ? 0.32 : 0.18);
   s.connect(bp); bp.connect(g2); g2.connect(gEfeitos);
   s.start(t); s.stop(t + 0.07);
+}
+
+// torcida: ruido filtrado com envelope lento. "ooooh" grave na queda,
+// assobio agudo quando sai lance limpo.
+function torcida(t, forca, grave) {
+  const s = actx.createBufferSource(); s.buffer = ruido; s.loop = true;
+  const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 0.9;
+  bp.frequency.setValueAtTime(grave ? 420 : 700, t);
+  bp.frequency.linearRampToValueAtTime(grave ? 170 : 1600, t + 0.55);
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.linearRampToValueAtTime(0.26 * forca, t + (grave ? 0.18 : 0.09));
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.95);
+  s.connect(bp); bp.connect(g); g.connect(gEfeitos);
+  s.start(t); s.stop(t + 1.0);
 }
 
 function somErro(t) {
@@ -437,6 +456,10 @@ let gradBola = null, ultimoQuadro = 0, dtQuadro = 0.016;
 // Sem isso a bola teleporta de lado a cada toque: o trecho novo da parabola
 // ja comeca na deriva nova enquanto a bola acabou de chegar na antiga.
 let derivaVis = 0, pesoVis = 0;
+let tremor = 0, punch = 0, clarao = { a: 0, cor: '#e3b341' }, paradoAte = 0, calor = 0;
+const suco = { ligado: true };
+function sacudir(f) { if (suco.ligado) tremor = Math.max(tremor, f); }
+function piscar(cor, a) { if (suco.ligado && a > clarao.a) { clarao.a = a; clarao.cor = cor; } }
 let segurando = null;   // { parte, tipo, de, ate } enquanto a bola esta presa
 const perseguir = (de, para, taxa) => de + (para - de) * (1 - Math.exp(-dtQuadro * taxa));
 let ultimoJulg = null;
@@ -546,6 +569,8 @@ function soltar(parte) {
   if (!inf.sujo) {
     pontos += 500;
     anuncio = { txt: alvo.tipo === 'giro' ? 'Volta ao mundo' : 'Matou', b0: batidaVisual() };
+    torcida(actx.currentTime, 0.9, false);
+    piscar('#e3b341', 0.16);
   }
 }
 
@@ -576,12 +601,16 @@ function julgar(alvo, errMs) {
   faiscar(p, q === 'perf' ? '#e3b341' : q === 'bom' ? '#3fb950' : '#8b949e',
           q === 'perf' ? 14 : q === 'bom' ? 8 : 4);
   ultimoJulg = { q: q, err: errMs, b0: batidaVisual() };
+  if (q === 'perf' && suco.ligado) punch = Math.max(punch, 0.014);
+  if (combo > 0 && combo % 10 === 0) { torcida(actx.currentTime, 0.5, false); piscar('#3fb950', 0.10); }
   esmaga = batidaVisual();
   agacha = q === 'perf' ? 4 : 7;
 
   if (alvo.ultima && !inf.sujo && inf.limpos === inf.total && inf.dif >= 1) {
     pontos += 400 + inf.dif * 250;
     anuncio = { txt: inf.nome, b0: batidaVisual() };
+    torcida(actx.currentTime, 0.75, false);
+    piscar('#e3b341', 0.12);
   }
   if (Math.abs(deriva) > DERIVA_MAX) queda('bola longe demais');
 }
@@ -591,6 +620,7 @@ const parada = () => segurando && segurando.tipo === 'matar';
 function toqueNoVazio() {
   deriva += (deriva >= 0 ? 1 : -1) * 26;
   combo = 0;
+  sacudir(5);
   somErro(actx.currentTime);
   flash('no vazio', '#8b949e', 300);
   if (Math.abs(deriva) > DERIVA_MAX) queda('perdeu o equilíbrio');
@@ -600,6 +630,10 @@ function queda(motivo) {
   if (!rodando) return;
   vidas--; combo = 0; segurando = null;
   somErro(actx.currentTime);
+  torcida(actx.currentTime, 0.85, true);          // "ooooh" da arquibancada
+  sacudir(17);
+  piscar('#f85149', 0.26);
+  if (suco.ligado) paradoAte = performance.now() + 85;   // congela o quadro no impacto
   flash(motivo, '#f85149', 300);
   const b = batidaVisual();
   cai = { b0: b, p0: { x: bolaVis.x, y: bolaVis.y }, vx: deriva * 1.6 };
@@ -663,6 +697,7 @@ function quadro(ts) {
   if (!actx) return;
 
   // parado no menu nao precisa de 60: cai pra 12
+  if (paradoAte) { if (ts < paradoAte) return; paradoAte = 0; }
   const alvo = ((rodando && telaOpcoes.hidden) || calib) ? 60 : 12;
   if (ultimoQuadro && ts - ultimoQuadro < 1000 / alvo - 1) return;
   const dt = Math.min(0.05, ultimoQuadro ? (ts - ultimoQuadro) / 1000 : 0.016);
@@ -694,6 +729,9 @@ function quadro(ts) {
     if (f.vida <= 0) faiscas.splice(i, 1);
   }
   dtQuadro = dt;
+  tremor = perseguir(tremor, 0, 11);
+  punch = perseguir(punch, 0, 13);
+  clarao.a = perseguir(clarao.a, 0, 6);
   agacha = perseguir(agacha, 0, 10);
   derivaVis = perseguir(derivaVis, deriva, 11);
   derivaVel = perseguir(derivaVel, clamp((derivaVis - derivaAnt) / dt * 0.05, -26, 26), 12);
@@ -1030,7 +1068,8 @@ function desenharHUD(b) {
     ctx.globalAlpha = clamp(1 - (b - j.b0) / 1.1, 0, 1);
     ctx.textAlign = 'center';
     ctx.fillStyle = cor;
-    ctx.font = '700 26px ui-sans-serif,system-ui,sans-serif';
+    const pop = 1 + Math.max(0, 1 - (b - j.b0) * 9) * 0.22;
+    ctx.font = '700 ' + Math.round(26 * pop) + 'px ui-sans-serif,system-ui,sans-serif';
     ctx.fillText(rot, CX, 96);
     ctx.fillStyle = '#8b949e';
     ctx.font = '12px ui-monospace,monospace';
@@ -1069,10 +1108,17 @@ function desenharHUD(b) {
 
 function desenhar(b) {
   ctx.clearRect(0, 0, 900, 620);
+  ctx.save();
+  if (tremor > 0.25) ctx.translate((Math.random() * 2 - 1) * tremor,
+                                   (Math.random() * 2 - 1) * tremor);
+  if (punch > 0.0005) {
+    ctx.translate(CX, 360); ctx.scale(1 + punch, 1 + punch); ctx.translate(-CX, -360);
+  }
 
-  // gramado + pulso no tempo forte
+  // gramado: pulsa no tempo forte, e pulsa MAIS quanto maior o combo
   const pulso = 1 - (b - Math.floor(b));
-  ctx.fillStyle = 'rgba(63,185,80,' + (0.05 + pulso * 0.05).toFixed(3) + ')';
+  calor = Math.min(combo, 40) / 40;
+  ctx.fillStyle = 'rgba(63,185,80,' + (0.05 + pulso * (0.05 + calor * 0.11)).toFixed(3) + ')';
   ctx.fillRect(0, CHAO, 900, 620 - CHAO);
   ctx.strokeStyle = 'rgba(63,185,80,.25)';
   ctx.lineWidth = 2;
@@ -1127,6 +1173,24 @@ function desenhar(b) {
   ctx.globalAlpha = 1;
 
   desenharSegurar(b);
+  ctx.restore();
+
+  // brilho quente no alto quando a sequencia esta alta
+  if (calor > 0.25) {
+    const g2 = ctx.createLinearGradient(0, 0, 0, 240);
+    g2.addColorStop(0, 'rgba(227,179,65,' + (calor * 0.13).toFixed(3) + ')');
+    g2.addColorStop(1, 'rgba(227,179,65,0)');
+    ctx.fillStyle = g2;
+    ctx.fillRect(0, 0, 900, 240);
+  }
+
+  if (clarao.a > 0.004) {
+    ctx.globalAlpha = clarao.a;
+    ctx.fillStyle = clarao.cor;
+    ctx.fillRect(0, 0, 900, 620);
+    ctx.globalAlpha = 1;
+  }
+
   desenharHUD(b);
 }
 
@@ -1211,7 +1275,7 @@ function aplicarVolumes() {
 function salvarOpcoes() {
   try {
     localStorage.setItem('embaixadinha_opcoes',
-      JSON.stringify({ vol: vol, offsetMs: offsetMs, teclas: mapaAtual() }));
+      JSON.stringify({ vol: vol, offsetMs: offsetMs, teclas: mapaAtual(), suco: suco.ligado }));
   } catch (e) { /* modo anonimo, paciencia */ }
 }
 
@@ -1235,6 +1299,7 @@ function carregarOpcoes() {
       if (g.vol) for (const k in vol) if (typeof g.vol[k] === 'number') vol[k] = g.vol[k];
       if (typeof g.offsetMs === 'number') offsetMs = g.offsetMs;
       if (g.teclas) for (const p in PARTES) if (g.teclas[p]) PARTES[p].tecla = g.teclas[p];
+      if (typeof g.suco === 'boolean') suco.ligado = g.suco;
     }
   } catch (e) { /* idem */ }
   for (const k in SLIDERS) {
@@ -1243,6 +1308,7 @@ function carregarOpcoes() {
   }
   document.getElementById('vLat').value = offsetMs;
   document.getElementById('lLat').textContent = offsetMs + ' ms';
+  document.getElementById('cSuco').checked = suco.ligado;
   montarMapaTeclas();
 }
 
@@ -1258,6 +1324,12 @@ for (const k in SLIDERS) {
 }
 document.getElementById('vLat').addEventListener('input', function () {
   porLatencia(+this.value);
+});
+const cSuco = document.getElementById('cSuco');
+cSuco.addEventListener('change', function () {
+  suco.ligado = cSuco.checked;
+  if (!suco.ligado) { tremor = 0; punch = 0; clarao.a = 0; paradoAte = 0; }
+  salvarOpcoes();
 });
 document.getElementById('btUsar').addEventListener('click', function () {
   if (errosRec.length < 5) return;

@@ -51,6 +51,9 @@ quebrado, e a culpa é da latência do fone, não sua.
 - O tempo do jogo sai de `AudioContext.currentTime`, nunca de `Date.now()` nem de
   contagem de frames. Esconder a aba suspende o contexto, o que pausa o jogo inteiro
   de forma coerente, de graça.
+- Tremida de tela, flash, zoom no toque perfeito, brilho que cresce com o combo e
+  torcida sintetizada. Tudo desligável em *opções → efeitos visuais*, porque
+  tremida e flash incomodam quem tem sensibilidade.
 - A música é sintetizada em Web Audio (surdo, caixa, agogô, baixo) — não tem mp3.
   As camadas **respondem ao combo**: com pouco toque na sequência toca só o
   esqueleto, e vai enchendo conforme você emenda. Derrubou, desmonta.
