@@ -140,6 +140,13 @@
       <input type="range" id="vMus" min="0" max="100" value="70"><span id="lMus">70</span></div>
     <div class="linhaOp"><label>efeitos</label>
       <input type="range" id="vEfe" min="0" max="100" value="95"><span id="lEfe">95</span></div>
+    <div class="linhaOp"><label>fluidez</label>
+      <select id="sFps" style="background:var(--bg);border:1px solid var(--linha);
+        color:var(--txt);border-radius:7px;padding:7px 9px;font-size:13px;justify-self:start">
+        <option value="40">economia</option>
+        <option value="80">equilíbrio</option>
+        <option value="0">máxima (gasta mais)</option>
+      </select><span></span></div>
     <div class="linhaOp"><label>efeitos visuais</label>
       <label style="justify-self:start;cursor:pointer;display:flex;align-items:center;gap:7px">
         <input type="checkbox" id="cSuco" checked style="width:auto;accent-color:var(--verde)">
@@ -517,6 +524,9 @@ let gradBola = null, ultimoQuadro = 0, dtQuadro = 0.016;
 let derivaVis = 0, pesoVis = [0, 0];
 let tremor = 0, punch = 0, clarao = { a: 0, cor: '#e3b341' }, paradoAte = 0, calor = 0;
 const suco = { ligado: true };
+// Trava de quadro. Num monitor de alta taxa, travar em 60 tira 12ms de
+// resposta visual; nao travar queima energia a toa. Quem escolhe e o dono.
+let fpsAlvo = 80;   // 40 = economia, 80 = equilibrio, 0 = sem trava
 function sacudir(f) { if (suco.ligado) tremor = Math.max(tremor, f); }
 function piscar(cor, a) { if (suco.ligado && a > clarao.a) { clarao.a = a; clarao.cor = cor; } }
 let segurando = null;   // { quem, parte, tipo, de, ate } enquanto a bola esta presa
@@ -774,8 +784,9 @@ function quadro(ts) {
 
   // parado no menu nao precisa de 60: cai pra 12
   if (paradoAte) { if (ts < paradoAte) return; paradoAte = 0; }
-  const alvo = ((rodando && telaOpcoes.hidden) || calib) ? 60 : 12;
-  if (ultimoQuadro && ts - ultimoQuadro < 1000 / alvo - 1) return;
+  const emJogo = (rodando && telaOpcoes.hidden) || calib;
+  const alvo = emJogo ? fpsAlvo : 12;
+  if (alvo > 0 && ultimoQuadro && ts - ultimoQuadro < 1000 / alvo - 1) return;
   const dt = Math.min(0.05, ultimoQuadro ? (ts - ultimoQuadro) / 1000 : 0.016);
   ultimoQuadro = ts;
   const b = batidaVisual();
@@ -1429,7 +1440,7 @@ function aplicarVolumes() {
 function salvarOpcoes() {
   try {
     localStorage.setItem('embaixadinha_opcoes',
-      JSON.stringify({ vol: vol, offsetMs: offsetMs, teclas: mapaAtual(), suco: suco.ligado }));
+      JSON.stringify({ vol: vol, offsetMs: offsetMs, teclas: mapaAtual(), suco: suco.ligado, fps: fpsAlvo }));
   } catch (e) { /* modo anonimo, paciencia */ }
 }
 
@@ -1454,6 +1465,7 @@ function carregarOpcoes() {
       if (typeof g.offsetMs === 'number') offsetMs = g.offsetMs;
       if (g.teclas) for (const p in PARTES) if (g.teclas[p]) PARTES[p].tecla = g.teclas[p];
       if (typeof g.suco === 'boolean') suco.ligado = g.suco;
+      if (typeof g.fps === 'number') fpsAlvo = g.fps;
     }
   } catch (e) { /* idem */ }
   for (const k in SLIDERS) {
@@ -1463,6 +1475,7 @@ function carregarOpcoes() {
   document.getElementById('vLat').value = offsetMs;
   document.getElementById('lLat').textContent = offsetMs + ' ms';
   document.getElementById('cSuco').checked = suco.ligado;
+  document.getElementById('sFps').value = String(fpsAlvo);
   montarMapaTeclas();
 }
 
@@ -1479,6 +1492,9 @@ for (const k in SLIDERS) {
 document.getElementById('vLat').addEventListener('input', function () {
   porLatencia(+this.value);
 });
+const sFps = document.getElementById('sFps');
+sFps.addEventListener('change', function () { fpsAlvo = +sFps.value; salvarOpcoes(); });
+
 const cSuco = document.getElementById('cSuco');
 cSuco.addEventListener('change', function () {
   suco.ligado = cSuco.checked;

@@ -81,6 +81,11 @@ quebrado, e a culpa é da latência do fone, não sua.
 - O tempo do jogo sai de `AudioContext.currentTime`, nunca de `Date.now()` nem de
   contagem de frames. Esconder a aba suspende o contexto, o que pausa o jogo inteiro
   de forma coerente, de graça.
+- **Fluidez** ajustável em opções (economia / equilíbrio / máxima). Travar o
+  desenho economiza energia mas custa resposta visual: num monitor de 164 Hz,
+  *equilíbrio* dá 82 fps (12,2 ms) e *máxima* dá 164 fps (6,1 ms). O relógio do
+  jogo é o do áudio, então nada disso mexe em precisão de timing — só em quanto
+  tempo você leva pra VER o que já aconteceu.
 - Tremida de tela, flash, zoom no toque perfeito, brilho que cresce com o combo e
   torcida sintetizada. Tudo desligável em *opções → efeitos visuais*, porque
   tremida e flash incomodam quem tem sensibilidade.
