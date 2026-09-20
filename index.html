@@ -281,9 +281,14 @@ const PROG    = [55, 55, 73.42, 65.41];
 // A levada responde ao combo: com pouco toque na sequencia toca so o esqueleto,
 // e vai enchendo conforme voce emenda. Derrubou, desmonta. Como cada instrumento
 // e um no separado, isso e so decidir tocar ou nao.
+// A CAIXA NUNCA e gateada: ela e o marcador de tempo. O surdo nao toca no
+// passo 0 nem no 8, entao tirar a caixa deixava o tempo forte mudo — e logo
+// depois de uma queda, que e quando o jogador mais precisa da referencia.
+// So o ornamento responde ao combo; a caixa so muda de volume.
 function camadas() {
   const c = rodando ? combo : 0;
-  return { caixa: c >= 3, agogo: c >= 8, baixo: c >= 14, tamborim: c >= 24 };
+  return { agogo: c >= 6, baixo: c >= 12, tamborim: c >= 22,
+           volCaixa: 0.17 + Math.min(c, 12) / 12 * 0.11 };
 }
 
 const P_TAMBORIM = [0,1,0,1, 1,0,1,0, 0,1,0,1, 1,0,1,1];
@@ -296,7 +301,7 @@ function tocarPasso(p, t) {
   const virando = ((p / 16 | 0) % 8) === 7 && s >= 8;
 
   if (P_SURDO[s]) surdo(t, P_SURDO[s]);
-  if (cam.caixa && P_CAIXA[s]) caixa(t, P_CAIXA[s] * 0.26);
+  if (P_CAIXA[s]) caixa(t, P_CAIXA[s] * cam.volCaixa);
   if (cam.agogo && P_AGOGO[s]) agogo(t, P_AGOGO[s] === 1 ? 932 : 699, 0.1);
   if (cam.tamborim && P_TAMBORIM[s]) agogo(t, 1245, 0.05);
   if (cam.baixo && s === 0)  baixo(t, PROG[compasso], spbAgora() * 1.4);
