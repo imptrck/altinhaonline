@@ -16,14 +16,13 @@ npx wrangler login      # abre o navegador pra autenticar
 npx wrangler deploy
 ```
 
-No fim ele imprime algo como `https://altinha-relay.SEU-SUBDOMINIO.workers.dev`.
-No jogo, em **online**, cole no campo *relay* trocando `https` por **`wss`**:
+Publicado em **`wss://altinha-relay.patrickdelbello.workers.dev`**, que já é o
+padrão no jogo — não precisa configurar nada.
 
-```
-wss://altinha-relay.SEU-SUBDOMINIO.workers.dev
-```
-
-Fica salvo no navegador; só precisa fazer uma vez.
+**Latência medida do Brasil: 120 ms de ida e volta.** Conectar no edge leva 16 ms;
+o resto é a distância até o Durable Object, que só existe num subconjunto de
+locais. `locationHint: 'sam'` não mudou nada. Não incomoda: o passe leva 1250 ms
+no ar, e a margem antes de dar a nota do outro como perdida é de 595 ms.
 
 ## Protocolo
 

@@ -97,6 +97,9 @@ export default {
     const cod = (url.searchParams.get('sala') || '').toUpperCase().slice(0, 8);
     if (!cod) return new Response('falta ?sala=CODIGO', { status: 400 });
     const id = env.SALA.idFromName(cod);
-    return env.SALA.get(id).fetch(req);
+    // 'sam' = America do Sul. MEDIDO: nao mudou nada a partir do Brasil
+    // (120ms com e sem). Durable Object so existe num subconjunto de locais;
+    // do Brasil parece cair no norte. Fica pela intencao, nao pelo ganho.
+    return env.SALA.get(id, { locationHint: 'sam' }).fetch(req);
   },
 };
