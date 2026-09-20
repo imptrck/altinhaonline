@@ -82,13 +82,15 @@ function tratar(cli, txt) {
   const s = salas.get(cli.sala);
   if (!s) return;
 
-  if (m.t === 'comecar' && cli.quem === 0) {  // so o anfitriao manda comecar
+  if (m.t === 'comecar') {
+    if (cli.quem !== 0) return;              // visitante nao comeca, e nao repassa
     const t0 = Date.now() + 2500;             // hora do beat 0, no relogio do servidor
     s.clientes.forEach(c => enviar(c.sock, JSON.stringify({ t: 'comecar', t0: t0, seed: s.seed })));
     return;
   }
 
-  // qualquer outra coisa e repassada pro parceiro, sem o servidor entender
+  // lista fechada: so mensagem de jogo atravessa
+  if (m.t !== 'toque' && m.t !== 'falha') return;
   s.clientes.forEach(c => { if (c !== cli) enviar(c.sock, txt); });
 }
 

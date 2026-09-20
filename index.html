@@ -1680,6 +1680,9 @@ function receber(m) {
 }
 
 function arrancarOnline(m) {
+  if (!rede || !isFinite(m.t0) || !isFinite(rede.offset)) {
+    return statusOnline('não consegui sincronizar o relógio — tenta de novo');
+  }
   if (!actx) iniciarAudio();
   if (actx.state === 'suspended') actx.resume();
 

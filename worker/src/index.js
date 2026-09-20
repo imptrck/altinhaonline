@@ -65,7 +65,8 @@ export class Sala {
 
     if (!meu.entrou) return;
 
-    if (m.t === 'comecar' && meu.quem === 0) {      // so o anfitriao comeca
+    if (m.t === 'comecar') {
+      if (meu.quem !== 0) return;                  // visitante nao comeca, e nao repassa
       const t0 = Date.now() + 2500;                 // hora do beat 0, relogio do servidor
       const seed = await this.ctx.storage.get('seed');
       for (const w of this.vivos()) {
@@ -74,7 +75,9 @@ export class Sala {
       return;
     }
 
-    // o resto o servidor nao entende: so repassa pro parceiro
+    // lista fechada: so mensagem de jogo atravessa. Repassar tudo deixava o
+    // 'comecar' recusado do visitante chegar cru no outro lado, sem t0.
+    if (m.t !== 'toque' && m.t !== 'falha') return;
     for (const w of this.vivos()) if (w !== ws) w.send(txt);
   }
 
