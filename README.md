@@ -53,9 +53,13 @@ Recorde do dia e recorde geral ficam salvos no navegador.
 
 ## Notas longas (segurar)
 
-Alguns toques pedem que você **segure** a tecla em vez de tocar. Um anel de
-progresso mostra quanto falta, e o aviso vira **SOLTA** perto do fim — soltar é
-julgado como um toque, com a mesma janela de tempo.
+Alguns toques pedem que você **segure** a tecla em vez de tocar. Você é avisado
+com ~1,5 s de antecedência: anel duplo dourado no alvo, a palavra **SEGURAR** (ou
+**GIRAR**) em cima dele, e um halo dourado na própria bola — porque é na bola que
+o olho fica, não no alvo.
+
+Durante o toque, um anel de progresso mostra quanto falta, e o aviso vira
+**SOLTA** perto do fim; soltar é julgado como um toque, com a mesma janela.
 
 - **Matar no pé / na coxa** — a bola para em cima do corpo enquanto você segura.
 - **Volta ao mundo** — você toca, a bola sobe, o pé dá a volta em torno dela, e

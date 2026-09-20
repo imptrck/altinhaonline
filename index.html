@@ -1099,9 +1099,35 @@ function desenharAlvos(b) {
   }
 }
 
+// nota longa chegando, se ja da pra avisar
+function longaChegando(b) {
+  const p = notaPendente();
+  if (!p || !p.segurar) return null;
+  const faltam = p.beat - b;
+  return (faltam < 2.6 && faltam > -0.3) ? { nota: p, faltam: faltam } : null;
+}
+
 // o anel de segurar precisa vir DEPOIS do jogador e da bola, senao some atras deles
 function desenharSegurar(b) {
-  if (!segurando) return;
+  if (!segurando) {
+    // AVISO: antes disso o jogador so descobria que era pra segurar no momento
+    // do toque, que e tarde. Anel duplo dourado + palavra, com antecedencia.
+    const av = longaChegando(b);
+    if (!av) return;
+    const k = clamp(1 - av.faltam / 2.6, 0, 1);
+    const pt = posParte(av.nota.parte, derivaVis, av.nota.quem || 0);
+    ctx.globalAlpha = 0.3 + k * 0.7;
+    ctx.strokeStyle = '#e3b341';
+    ctx.lineWidth = 2.5 + k * 3;
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, 25, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, 34 + (1 - k) * 26, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#e3b341';
+    ctx.font = '800 13px ui-sans-serif,system-ui,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(av.nota.tipo === 'giro' ? 'GIRAR' : 'SEGURAR', pt.x, pt.y - 46);
+    ctx.globalAlpha = 1;
+    return;
+  }
   const k = clamp((b - segurando.de) / (segurando.ate - segurando.de), 0, 1);
   const pt = segurando.tipo === 'giro' ? bolaVis : posParte(segurando.parte, derivaVis, segurando.quem);
   ctx.strokeStyle = 'rgba(13,17,23,.55)';
@@ -1258,6 +1284,18 @@ function desenhar(b) {
   ctx.beginPath();
   ctx.ellipse(bolaVis.x, CHAO + 5, 16 - alt * 8, 4.5 - alt * 2, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  // a bola tambem avisa, porque e nela que o olho fica
+  const avBola = longaChegando(b);
+  if (avBola) {
+    const kb = clamp(1 - avBola.faltam / 2.6, 0, 1);
+    const pulsa = 20 + Math.sin(b * Math.PI * 3) * 3;
+    ctx.strokeStyle = '#e3b341';
+    ctx.globalAlpha = 0.35 + kb * 0.5;
+    ctx.lineWidth = 2 + kb * 2;
+    ctx.beginPath(); ctx.arc(bolaVis.x, bolaVis.y, pulsa, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
   // bola, achatando no instante do toque
   const kEsm = clamp(1 - (b - esmaga) / 0.09, 0, 1);
