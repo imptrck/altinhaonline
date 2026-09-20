@@ -418,12 +418,18 @@ const CX = TELA_CX;
 const PARTES = {
   peE:    { tecla:'a', rot:'A', nome:'pé E',   x:-98, y:470, cor:'#58a6ff', hz:300 },
   coxaE:  { tecla:'s', rot:'S', nome:'coxa E', x:-82, y:338, cor:'#3fb950', hz:380 },
+  peito:  {             rot:'S+K', nome:'peito',  x:  0, y:268, cor:'#7ee0c8', hz:430 },
   cabeca: { tecla:' ', rot:'␣', nome:'cabeça', x:  0, y:144, cor:'#e3b341', hz:540 },
   coxaD:  { tecla:'k', rot:'K', nome:'coxa D', x: 82, y:338, cor:'#3fb950', hz:380 },
   peD:    { tecla:'l', rot:'L', nome:'pé D',   x: 98, y:470, cor:'#58a6ff', hz:300 },
 };
 const PORTECLA = {};
-for (const k in PARTES) PORTECLA[PARTES[k].tecla] = k;
+for (const k in PARTES) if (PARTES[k].tecla) PORTECLA[PARTES[k].tecla] = k;
+// peito nao tem tecla propria: sai apertando as DUAS coxas juntas. Fica no
+// meio do corpo, entao o acorde e espacialmente certo — e nao gasta tecla nova.
+const parDoPeito = () => [PARTES.coxaE.tecla, PARTES.coxaD.tecla];
+const LANES_SOLO = ['peE', 'coxaE', 'peito', 'cabeca', 'coxaD', 'peD'];
+let teclasBaixo = {};
 
 const LANCES = [
   { nome:'Base',        dif:0, len:4, ns:[[0,'peE'],[1,'peD'],[2,'peE'],[3,'peD']] },
@@ -437,6 +443,10 @@ const LANCES = [
   { nome:'Matou no pé', dif:2, len:6, ns:[[0,'peE'],[1,'peD'],[2,'peE',{segurar:2,tipo:'matar'}]] },
   { nome:'Matou na coxa',dif:2, len:6, ns:[[0,'peD'],[1,'peE'],[2,'coxaD',{segurar:2,tipo:'matar'}]] },
   { nome:'Volta ao mundo', dif:3, len:6, ns:[[0,'peD'],[1,'peE'],[2,'peD',{segurar:2,tipo:'giro'}]] },
+  { nome:'Peitada',      dif:2, len:4, ns:[[0,'peE'],[2,'peito']] },
+  { nome:'Matou no peito', dif:2, len:6, ns:[[0,'peE'],[1,'peD'],[2,'peito',{segurar:2,tipo:'matar'}]] },
+  { nome:'Peito e cabeça', dif:3, len:7, ns:[[0,'peD'],[2,'peito',{segurar:2,tipo:'matar'}],[5,'cabeca']] },
+  { nome:'Corpo inteiro', dif:3, len:8, ns:[[0,'peE'],[1,'coxaE'],[2,'peito'],[3,'cabeca'],[4,'coxaD'],[5,'peD']] },
   { nome:'Ziguezague',  dif:3, len:4, ns:[[0,'peE'],[.75,'peD'],[1.5,'coxaE'],[2.25,'coxaD'],[3,'cabeca']] },
   { nome:'Malabarismo', dif:3, len:4, ns:[[0,'peE'],[.5,'coxaE'],[1,'cabeca'],[1.5,'coxaD'],
                                           [2,'peD'],[2.5,'coxaD'],[3,'cabeca'],[3.5,'coxaE']] },
@@ -1067,7 +1077,8 @@ function desenharJogador(b, q, apagado) {
   pesoVis[q] = perseguir(pesoVis[q], (uE - uD) * 11, 13);
   const peso = pesoVis[q], ag = agacha[q];
 
-  const quadril = { x: meu + incl * 0.5 + bal + peso,  y: 392 + ag - alto };
+  const ePeitoAg = empenho('peito', b, q).u * 7;    // amortece pra matar no peito
+  const quadril = { x: meu + incl * 0.5 + bal + peso,  y: 392 + ag + ePeitoAg - alto };
   const ombro   = { x: meu + incl * 1.0 + bal * 1.5 + peso * 0.5, y: 250 + ag * 0.5 - alto + resp };
   const cabeca  = { x: meu + incl * 1.3 + bal * 2 + peso * 0.3,   y: 192 - alto - eCab.u * 10 };
   cabeca.x += clamp((bolaVis.x - cabeca.x) * 0.05, -9, 9);
@@ -1096,7 +1107,8 @@ function desenharJogador(b, q, apagado) {
   membro(ombro, { x: cabeca.x, y: cabeca.y + 16 }, 15, 13, PAL.pele);   // pescoco
 
   const tensao = Math.abs(derivaVis) / DERIVA_MAX;
-  const base = tensao * 0.45 + eCab.u * 0.3 + Math.abs(bal) * 0.04;
+  const ePei = empenho('peito', b, q);
+  const base = tensao * 0.45 + eCab.u * 0.3 + ePei.u * 0.55 + Math.abs(bal) * 0.04;
   desenharBraco('E', ombro, norm, clamp(uD * 0.5 + base, 0, 1));
   desenharBraco('D', ombro, norm, clamp(uE * 0.5 + base, 0, 1));
 
@@ -1117,7 +1129,7 @@ function desenharJogador(b, q, apagado) {
 function desenharAlvos(b) {
   const prox = notaPendente();
   const vez = prox ? (prox.quem || 0) : 0;
-  const lista = ehDupla() ? LANES_DUPLA : Object.keys(PARTES);
+  const lista = (ehDupla() || online()) ? LANES_DUPLA : LANES_SOLO;
   for (const k of lista) {
     const p = PARTES[k], pt = posParte(k, derivaVis, vez);
     const ativo = prox && prox.parte === k;
@@ -1187,7 +1199,8 @@ function desenharSegurar(b) {
   ctx.fillStyle = k > 0.88 ? '#3fb950' : '#e3b341';
   ctx.font = '800 13px ui-sans-serif,system-ui,sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText(k > 0.88 ? 'SOLTA' : 'SEGURA', pt.x, pt.y - 44);
+  ctx.fillText(k > 0.88 ? 'SOLTA' : 'SEGURA', pt.x,
+               pt.y + (segurando.parte === 'peito' ? 58 : -44));
 }
 
 function desenharHUD(b) {
@@ -1415,11 +1428,13 @@ const rotuloTecla = t => t === ' ' ? 'espaço' : t.length === 1 ? t.toUpperCase(
 function aplicarTeclas() {
   for (const k in PORTECLA) delete PORTECLA[k];
   for (const p in PARTES) {
+    if (!PARTES[p].tecla) continue;            // peito e acorde, nao tem tecla
     PORTECLA[PARTES[p].tecla] = p;
     PARTES[p].rot = PARTES[p].tecla === ' ' ? '␣'
                   : PARTES[p].tecla.length === 1 ? PARTES[p].tecla.toUpperCase()
                   : PARTES[p].tecla.slice(0, 3);
   }
+  PARTES.peito.rot = rotuloTecla(PARTES.coxaE.tecla) + '+' + rotuloTecla(PARTES.coxaD.tecla);
   ORDEM_PARTES.forEach(function (p) {
     const bt = document.getElementById('bind-' + p);
     if (bt) { bt.textContent = rotuloTecla(PARTES[p].tecla); bt.classList.remove('ouvindo'); }
@@ -1585,6 +1600,17 @@ addEventListener('keydown', function (e) {
     return;
   }
   const t = (k === 'Spacebar' ? ' ' : k);
+  teclasBaixo[t] = true;
+  // com nota de PEITO pendente, as coxas viram acorde: so vale se as duas
+  // estiverem apertadas. Uma sozinha nao dispara nem conta como erro.
+  if (!ehDupla() && !online()) {
+    const alvo = notaPendente();
+    const par = parDoPeito();
+    if (alvo && alvo.parte === 'peito' && (t === par[0] || t === par[1])) {
+      if (teclasBaixo[par[0]] && teclasBaixo[par[1]]) pressionar('peito', 0);
+      return;
+    }
+  }
   if (online()) {
     for (const parte in TECLAS_DUPLA[0])
       if (TECLAS_DUPLA[0][parte] === t) { pressionar(parte, meuLado); return; }
@@ -1601,8 +1627,15 @@ addEventListener('keydown', function (e) {
 });
 
 addEventListener('keyup', function (e) {
+  const k0 = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  teclasBaixo[k0 === 'Spacebar' ? ' ' : k0] = false;
   if (!rodando || !telaOpcoes.hidden) return;
-  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  const k = k0;
+  if (segurando && segurando.parte === 'peito') {   // largou uma das duas: soltou
+    const par = parDoPeito();
+    const t0 = (k === 'Spacebar' ? ' ' : k);
+    if (t0 === par[0] || t0 === par[1]) { soltar('peito', 0); return; }
+  }
   const t = (k === 'Spacebar' ? ' ' : k);
   if (ehDupla()) {
     for (let q = 0; q < 2; q++)
@@ -1834,7 +1867,7 @@ function montarToque() {
   barraToque.innerHTML = '';
   botoes = [];
   const grupos = online() ? [meuLado] : ehDupla() ? [0, 1] : [0];
-  const lanes = (ehDupla() || online()) ? LANES_DUPLA : ORDEM_PARTES;
+  const lanes = (ehDupla() || online()) ? LANES_DUPLA : LANES_SOLO;
   grupos.forEach(function (q) {
     const g = document.createElement('div');
     g.className = 'grupo';
@@ -1900,7 +1933,7 @@ function prepararPartida(novoModo) {
   if (novoModo) modo = novoModo;
   pontos = 0; combo = 0; melhorCombo = 0; vidas = 3;
   deriva = 0; derivaVis = 0; pesoVis = [0, 0]; derivaVel = 0; derivaAnt = 0; segurando = null;
-  rastro = []; faiscas = []; flashes = []; alcance = [{}, {}];
+  rastro = []; faiscas = []; flashes = []; alcance = [{}, {}]; teclasBaixo = {};
   agacha = [0, 0]; donoAtual = 0;
   anuncio = null; ultimoJulg = null; errosRec = [];
   tremor = 0; punch = 0; clarao.a = 0; paradoAte = 0;

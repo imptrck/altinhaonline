@@ -27,7 +27,13 @@ e sem calibrar o jogo parece quebrado.
 | `espaço` | cabeça |
 | `K` | coxa direita |
 | `L` | pé direito |
+| `S`+`K` juntos | **peito** |
 | `Esc` | opções / pausa |
+
+O peito não tem tecla própria: sai apertando **as duas coxas ao mesmo tempo**.
+Ele fica no meio do corpo, então o acorde é espacialmente certo — e não gasta
+tecla nova. Se você remapear as coxas, o acorde acompanha. No celular ele é um
+botão normal, porque lá dois dedos em botões diferentes seria pior.
 
 ## Em dupla (mesmo teclado)
 
