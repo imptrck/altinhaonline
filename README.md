@@ -30,6 +30,19 @@ bola vai de um boneco pro outro, e quando é a sua vez o seu lado acende.
 Cooperativo: placar e bolas são dos dois. E o detalhe que faz a graça — **o seu
 erro de tempo chega torto pra ele**. Passe porco, problema dele.
 
+## Online
+
+Botão **online** na tela inicial. Combinem nome de sala e senha; quem entra
+primeiro é o anfitrião e dá o start. Cada um usa `A S D` no próprio teclado.
+
+Como funciona, em uma frase: **quem julga um toque é sempre o dono dele**, então
+a sua latência nunca te faz errar — você só transmite o resultado. O outro lado
+desenha a bola de forma otimista e corrige quando a mensagem chega; notícia ruim
+chegando 100 ms atrasada ninguém percebe.
+
+O relógio comum sai de 8 idas e voltas até o servidor, ficando com a de menor
+tempo. Precisa subir o relay uma vez — veja `worker/README.md`.
+
 ## Desafio do dia
 
 A partitura sai de um sorteio **semeado pela data**: todo mundo que abrir hoje

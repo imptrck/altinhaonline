@@ -44,6 +44,10 @@
   #fimRecorde{font-size:13px}
   #calibPonto{width:54px;height:54px;border-radius:50%;background:var(--amarelo);transform:scale(.55)}
   #calibConta{font:700 15px ui-monospace,monospace;color:var(--fraco)}
+  .linhaOn{display:grid;grid-template-columns:64px 260px;gap:10px;align-items:center;
+    font-size:13px;color:var(--fraco)}
+  .linhaOn input{background:var(--bg);border:1px solid var(--linha);color:var(--txt);
+    border-radius:7px;padding:8px 10px;font:13px ui-monospace,monospace;width:100%}
   .linhaOp{display:grid;grid-template-columns:96px 200px 54px;align-items:center;
     gap:12px;font-size:13px;color:var(--fraco)}
   .linhaOp span{font-variant-numeric:tabular-nums;color:var(--txt);font-size:12px}
@@ -81,6 +85,7 @@
     <div class="botoes">
       <button id="btIniciar">sozinho</button>
       <button id="btDupla">em dupla</button>
+      <button id="btOnline">online</button>
       <button id="btOpcoes" class="sec">opções</button>
     </div>
     <p style="font-size:12px">Em dupla, no mesmo teclado: um joga com
@@ -96,6 +101,21 @@
     <div class="botoes">
       <button id="btDeNovo">de novo</button>
       <button id="btCompartilhar" class="sec">compartilhar</button>
+    </div>
+  </div>
+
+  <div class="tela" id="telaOnline" hidden>
+    <h1 style="font-size:26px">Jogar online</h1>
+    <p>Combinem um nome de sala e uma senha. Quem entrar primeiro é o anfitrião
+       e dá o start. Vocês dois usam <b>A S D</b> no próprio teclado.</p>
+    <div class="linhaOn"><label>sala</label><input id="onSala" maxlength="8" placeholder="ALTINHA"></div>
+    <div class="linhaOn"><label>senha</label><input id="onSenha" type="text" placeholder="opcional"></div>
+    <div class="linhaOn"><label>relay</label><input id="onUrl" placeholder="wss://..."></div>
+    <p id="onStatus" style="min-height:18px;color:var(--amarelo)"></p>
+    <div class="botoes">
+      <button id="btOnEntrar">entrar na sala</button>
+      <button id="btOnComecar" class="sec" hidden>começar</button>
+      <button id="btOnVoltar" class="sec">voltar</button>
     </div>
   </div>
 
@@ -527,6 +547,7 @@ function bolaNaParabola(b) {
   const u = clamp((b - a.beat) / dt, 0, 1);
   let arco = Math.min(300, 82 * Math.pow(dt, 1.4));
   if ((a.quem || 0) !== (c.quem || 0)) arco = Math.min(330, arco * 1.5);   // passe cruza mais alto
+  arco = Math.min(arco, (p0.y + p1.y) / 2 - 46);      // nunca sai pelo topo da tela
   return {
     x: p0.x + (p1.x - p0.x) * u,
     y: p0.y + (p1.y - p0.y) * u - arco * 4 * u * (1 - u),
@@ -604,7 +625,7 @@ function soltar(parte, quem) {
   segurando = null;
   if (!alvo || !alvo.solta || err < -JAN.ok) {
     if (alvo) infoLance[alvo.lance].sujo = true;
-    queda('soltou cedo');
+    queda('soltou cedo', alvo ? alvo.beat : undefined);
     return;
   }
   julgar(alvo, err);
@@ -617,7 +638,7 @@ function soltar(parte, quem) {
   }
 }
 
-function julgar(alvo, errMs) {
+function julgar(alvo, errMs, remoto) {
   const abs = Math.abs(errMs);
   const q = abs <= JAN.perf ? 'perf' : abs <= JAN.bom ? 'bom' : 'ok';
   const amort = q === 'perf' ? 0.30 : q === 'bom' ? 0.68 : 0.93;
@@ -656,7 +677,10 @@ function julgar(alvo, errMs) {
     torcida(actx.currentTime, 0.75, false);
     piscar('#e3b341', 0.12);
   }
-  if (Math.abs(deriva) > DERIVA_MAX) queda('bola longe demais');
+  if (!remoto && online() && (alvo.quem || 0) === meuLado) {
+    dizer({ t: 'toque', beat: alvo.beat, q: q, err: Math.round(errMs), dx: Math.round(deriva) });
+  }
+  if (Math.abs(deriva) > DERIVA_MAX) queda('bola longe demais', alvo.beat);
 }
 
 const parada = () => segurando && segurando.tipo === 'matar';
@@ -667,10 +691,13 @@ function toqueNoVazio() {
   sacudir(5);
   somErro(actx.currentTime);
   flash('no vazio', '#8b949e', 300);
-  if (Math.abs(deriva) > DERIVA_MAX) queda('perdeu o equilíbrio');
+  if (Math.abs(deriva) > DERIVA_MAX) {
+    const n = notaPendente();
+    queda('perdeu o equilíbrio', n ? n.beat : undefined);
+  }
 }
 
-function queda(motivo) {
+function queda(motivo, ancora) {
   if (!rodando) return;
   vidas--; combo = 0; segurando = null;
   somErro(actx.currentTime);
@@ -684,13 +711,18 @@ function queda(motivo) {
 
   if (vidas <= 0) { fim(); return; }
 
-  // relanca: limpa a partitura e monta um saque do chao
+  // Relanca PULANDO pra frente, ancorado na batida da NOTA e nao no relogio
+  // local. Antes isso regerava a partitura, e online os dois lados divergiam
+  // na hora: cada um sorteava a sua continuacao.
   deriva = 0; derivaVis = 0; pesoVis = [0, 0]; segurando = null;
-  notas = []; infoLance = {};
-  proxB = Math.ceil(b + 4);
-  notas.push({ beat: proxB - 2, parte: 'chao', lance: 0, quem: donoAtual,
-               ultima: false, julgada: true, dx: 0 });
-  gerar(proxB + 20);
+
+  const base = (typeof ancora === 'number') ? ancora : b;
+  const retomar = Math.ceil(base + 4);
+  notas = notas.filter(function (n) { return n.beat >= retomar; });
+  if (proxB < retomar + 20) gerar(retomar + 20);
+  const dono = notas.length ? (notas[0].quem || 0) : 0;
+  notas.unshift({ beat: retomar - 2, parte: 'chao', lance: 0, quem: dono,
+                  ultima: false, julgada: true, dx: 0 });
 }
 
 function fim() {
@@ -757,9 +789,15 @@ function quadro(ts) {
 
     const alvo = notaPendente();
     if (alvo && erroMsDa(alvo) > JAN.ok) {
-      alvo.julgada = true;
-      infoLance[alvo.lance] && (infoLance[alvo.lance].sujo = true);
-      queda(alvo.solta ? 'segurou demais' : 'deixou passar');
+      const minha = !online() || (alvo.quem || 0) === meuLado;
+      // a nota do outro so e dada como perdida depois da gracia: a mensagem
+      // dele pode estar a caminho. Noticia ruim chegando atrasada ninguem nota.
+      if (minha || erroMsDa(alvo) > JAN.ok + 450) {
+        alvo.julgada = true;
+        infoLance[alvo.lance] && (infoLance[alvo.lance].sujo = true);
+        if (minha && online()) dizer({ t: 'falha', beat: alvo.beat });
+        queda(alvo.solta ? 'segurou demais' : minha ? 'deixou passar' : 'ele deixou passar', alvo.beat);
+      }
     }
   }
 
@@ -1419,10 +1457,10 @@ document.getElementById('btUsar').addEventListener('click', function () {
 let voltarPara = 'inicio';
 
 function abrirOpcoes() {
-  if (!telaOpcoes.hidden) return;
+  if (!telaOpcoes.hidden || !telaOnline.hidden) return;
   voltarPara = !telaInicio.hidden ? 'inicio' : !telaFim.hidden ? 'fim' : 'jogo';
   telaInicio.hidden = true; telaFim.hidden = true; telaOpcoes.hidden = false;
-  if (voltarPara === 'jogo' && actx) { pausado = true; actx.suspend(); }
+  if (voltarPara === 'jogo' && actx && !online()) { pausado = true; actx.suspend(); }
 }
 
 function fecharOpcoes() {
@@ -1459,6 +1497,11 @@ addEventListener('keydown', function (e) {
     return;
   }
   const t = (k === 'Spacebar' ? ' ' : k);
+  if (online()) {
+    for (const parte in TECLAS_DUPLA[0])
+      if (TECLAS_DUPLA[0][parte] === t) { pressionar(parte, meuLado); return; }
+    return;
+  }
   if (ehDupla()) {
     for (let q = 0; q < 2; q++)
       for (const parte in TECLAS_DUPLA[q])
@@ -1485,6 +1528,7 @@ addEventListener('keyup', function (e) {
 
 // sair da janela come o keyup e deixaria a tecla presa: pausa em vez disso
 addEventListener('blur', function () {
+  if (online()) { segurando = null; return; }
   if (rodando && telaOpcoes.hidden) { segurando = null; abrirOpcoes(); }
 });
 
@@ -1547,9 +1591,146 @@ document.getElementById('btCalibDeNovo').addEventListener('click', function () {
   telaOpcoes.hidden = true; abrirCalib();
 });
 
+/* ==========================================================================
+   8. ONLINE
+   O servidor nao entende o jogo: repassa mensagens e responde ping. Quem
+   julga um toque e SEMPRE o dono dele — assim a sua latencia nunca te faz
+   errar. O outro lado recebe o resultado e aplica.
+   ========================================================================== */
+
+const RELAY_PADRAO = 'wss://altinha-relay.SEU-SUBDOMINIO.workers.dev';
+let rede = null, meuLado = 0;
+const online = () => !!(rede && rede.jogando);
+
+function dizer(m) {
+  if (rede && rede.ws && rede.ws.readyState === 1) rede.ws.send(JSON.stringify(m));
+}
+
+function statusOnline(txt) {
+  const el = document.getElementById('onStatus');
+  if (el) el.textContent = txt;
+}
+
+function conectar() {
+  const sala = document.getElementById('onSala').value.trim().toUpperCase();
+  const senha = document.getElementById('onSenha').value;
+  const url = document.getElementById('onUrl').value.trim();
+  if (!sala) return statusOnline('escolhe um nome de sala');
+  try { localStorage.setItem('altinha_relay', url); } catch (e) {}
+
+  statusOnline('conectando…');
+  const alvo = url + (url.indexOf('?') < 0 ? '?' : '&') + 'sala=' + encodeURIComponent(sala);
+  let ws;
+  try { ws = new WebSocket(alvo); } catch (e) { return statusOnline('endereço inválido'); }
+  rede = { ws: ws, quem: 0, gente: 0, seed: 0, amostras: [], offset: 0, jogando: false };
+
+  ws.onopen = function () {
+    dizer({ t: 'entrar', sala: sala, senha: senha });
+    sincronizar();
+  };
+  ws.onerror = function () { statusOnline('não consegui conectar'); };
+  ws.onclose = function () {
+    if (rede && rede.jogando) { flash('o outro caiu', '#f85149', 300); }
+    statusOnline('desconectado');
+    if (rede) rede.jogando = false;
+  };
+  ws.onmessage = function (ev) {
+    let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+    receber(m);
+  };
+}
+
+// Relogio comum: 8 idas e voltas, fica com a de menor tempo — a menos
+// contaminada por fila de rede. offset converte relogio local em do servidor.
+function sincronizar() {
+  let n = 0;
+  const iv = setInterval(function () {
+    if (!rede || !rede.ws || rede.ws.readyState !== 1 || n++ >= 8) { clearInterval(iv); return; }
+    dizer({ t: 'ping', c: Date.now() });
+  }, 120);
+}
+
+function receber(m) {
+  if (m.t === 'pong') {
+    const agora = Date.now(), ida = agora - m.c;
+    rede.amostras.push({ ida: ida, off: m.s - (m.c + ida / 2) });
+    rede.amostras.sort(function (a, b) { return a.ida - b.ida; });
+    rede.offset = rede.amostras[0].off;
+    return;
+  }
+  if (m.t === 'erro') return statusOnline(m.msg);
+  if (m.t === 'saiu') {
+    statusOnline('o outro saiu da sala');
+    if (rede) rede.gente = 1;
+    return;
+  }
+  if (m.t === 'sala') {
+    rede.quem = m.quem; rede.gente = m.gente; rede.seed = m.seed;
+    meuLado = m.quem;
+    document.getElementById('btOnComecar').hidden = (m.quem !== 0);
+    statusOnline(m.gente < 2
+      ? 'na sala como ' + (m.quem ? 'visitante' : 'anfitrião') + ' — esperando o outro'
+      : 'dois na sala' + (m.quem === 0 ? ' — pode começar' : ' — o anfitrião começa'));
+    return;
+  }
+  if (m.t === 'comecar') return arrancarOnline(m);
+  if (!online()) return;
+  if (m.t === 'toque') return toqueDoOutro(m);
+  if (m.t === 'falha') return quedaDoOutro(m);
+}
+
+function arrancarOnline(m) {
+  if (!actx) iniciarAudio();
+  if (actx.state === 'suspended') actx.resume();
+
+  // t0 vem no relogio do SERVIDOR: traz pro local, depois pro relogio do audio
+  const t0Local = m.t0 - rede.offset;
+  const t0Actx = actx.currentTime + (t0Local - Date.now()) / 1000;
+
+  prepararPartida('dupla');
+  rnd = mulberry32(m.seed >>> 0);
+  notas = []; infoLance = {}; idLance = 0; donoAtual = 0;
+  proxB = 8;
+  notas.push({ beat: 6, parte: 'chao', lance: 0, quem: 0, ultima: false, julgada: true, dx: 0 });
+  gerar(32);
+
+  passo = 0; bpmAlvo = BPM0;
+  trechos = [{ beat0: 0, t0: t0Actx, spb: 60 / BPM0 }];
+  rede.jogando = true;
+  rodando = true;
+  if (!tocadorId) tocadorId = setInterval(bombeador, 25);
+  telaInicio.hidden = true; telaFim.hidden = true; telaOnline.hidden = true;
+  painelCalib.hidden = false; dica.hidden = false;
+}
+
+function toqueDoOutro(m) {
+  const n = notas.find(function (x) { return !x.julgada && Math.abs(x.beat - m.beat) < 0.01; });
+  if (!n) return;
+  julgar(n, m.err, true);
+  deriva = m.dx;                 // a deriva de quem tocou e a que vale
+}
+
+function quedaDoOutro(m) {
+  const n = notas.find(function (x) { return !x.julgada && Math.abs(x.beat - m.beat) < 0.01; });
+  if (n) { n.julgada = true; if (infoLance[n.lance]) infoLance[n.lance].sujo = true; }
+  queda('ele deixou passar', m.beat);
+}
+
+function prepararPartida(novoModo) {
+  if (novoModo) modo = novoModo;
+  pontos = 0; combo = 0; melhorCombo = 0; vidas = 3;
+  deriva = 0; derivaVis = 0; pesoVis = [0, 0]; derivaVel = 0; derivaAnt = 0; segurando = null;
+  rastro = []; faiscas = []; flashes = []; alcance = [{}, {}];
+  agacha = [0, 0]; donoAtual = 0;
+  anuncio = null; ultimoJulg = null; errosRec = [];
+  tremor = 0; punch = 0; clarao.a = 0; paradoAte = 0;
+  cai = { b0: -999, p0: { x: TELA_CX, y: CHAO }, vx: 0 };
+}
+
 function comecar(novoModo) {
   // primeira visita: calibra antes de deixar jogar
   if (precisaCalibrar) { precisaCalibrar = false; abrirCalib(); return; }
+  if (rede) { rede.jogando = false; try { rede.ws.close(); } catch (e) {} rede = null; }
   if (novoModo === 'solo' || novoModo === 'dupla') modo = novoModo;
   if (!actx) iniciarAudio();
   if (actx.state === 'suspended') actx.resume();
@@ -1583,6 +1764,7 @@ function comecar(novoModo) {
 
 document.addEventListener('visibilitychange', function () {
   if (!actx || !rodando) return;
+  if (online()) { actx.resume(); return; }   // pausar online = perder o relogio comum
   if (document.hidden) actx.suspend();
   else if (telaOpcoes.hidden) actx.resume();
 });
@@ -1616,6 +1798,24 @@ function copiaNaMarra(txt, ok) {
 
 carregarRecordes();
 atualizarSelo();
+
+const telaOnline = document.getElementById('telaOnline');
+document.getElementById('btOnline').addEventListener('click', function () {
+  telaInicio.hidden = true; telaOnline.hidden = false;
+  let salvo = RELAY_PADRAO;
+  try { salvo = localStorage.getItem('altinha_relay') || RELAY_PADRAO; } catch (e) {}
+  document.getElementById('onUrl').value = salvo;
+  statusOnline('');
+});
+document.getElementById('btOnEntrar').addEventListener('click', conectar);
+document.getElementById('btOnComecar').addEventListener('click', function () {
+  if (!rede || rede.gente < 2) return statusOnline('esperando o outro entrar');
+  dizer({ t: 'comecar' });
+});
+document.getElementById('btOnVoltar').addEventListener('click', function () {
+  if (rede) { try { rede.ws.close(); } catch (e) {} rede = null; }
+  telaOnline.hidden = true; telaInicio.hidden = false;
+});
 
 document.getElementById('btIniciar').addEventListener('click', function () { comecar('solo'); });
 document.getElementById('btDupla').addEventListener('click', function () { comecar('dupla'); });

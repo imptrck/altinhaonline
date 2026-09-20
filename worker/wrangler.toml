@@ -1,0 +1,12 @@
+name = "altinha-relay"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+[[durable_objects.bindings]]
+name = "SALA"
+class_name = "Sala"
+
+# SQLite e obrigatorio pra Durable Objects no plano gratis
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Sala"]
