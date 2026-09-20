@@ -882,14 +882,16 @@ function desenharPerna(lado, b, quadril) {
   return { joelho: joelho, pe: pe };
 }
 
-function desenharBraco(lado, ombro, levanta) {
+// cada braco nasce na SUA ponta do ombro, nao no meio do tronco
+function desenharBraco(lado, ombro, norm, levanta) {
   const sig = lado === 'E' ? -1 : 1;
-  const mao = { x: ombro.x + sig * (56 + levanta * 30) - derivaVel * 1.1,
-                y: ombro.y + 74 - levanta * 62 };
-  const cot = articular(ombro, mao, OSSO_BRACO, -sig);
-  membro(ombro, cot, 19, 14, COR.pele);
+  const raiz = { x: ombro.x + norm.x * sig * 22, y: ombro.y + norm.y * sig * 22 };
+  const mao = { x: raiz.x + sig * (34 + levanta * 28) - derivaVel * 1.1,
+                y: raiz.y + 74 - levanta * 62 };
+  const cot = articular(raiz, mao, OSSO_BRACO, -sig);
+  membro(raiz, cot, 19, 14, COR.pele);
   membro(cot, mao, 13, 10, COR.pele);
-  membro(ombro, entre(ombro, cot, 0.5), 23, 18, COR.camisa);   // manga
+  membro(raiz, entre(raiz, cot, 0.5), 23, 18, COR.camisa);   // manga
   ctx.fillStyle = COR.pele;
   ctx.beginPath(); ctx.arc(mao.x, mao.y, 6.5, 0, Math.PI * 2); ctx.fill();
 }
@@ -954,12 +956,16 @@ function desenharJogador(b) {
   ctx.fill();
 
   desenharTronco(quadril, ombro);
+  // normal do tronco: e ela que da a largura do ombro pros bracos
+  const tdx = ombro.x - quadril.x, tdy = ombro.y - quadril.y;
+  const td = Math.sqrt(tdx * tdx + tdy * tdy) || 1;
+  const norm = { x: -tdy / td, y: tdx / td };
   membro(ombro, { x: cabeca.x, y: cabeca.y + 16 }, 15, 13, COR.pele);   // pescoco
 
   const tensao = Math.abs(derivaVis) / DERIVA_MAX;
   const base = tensao * 0.45 + eCab.u * 0.3 + Math.abs(bal) * 0.04;
-  desenharBraco('E', ombro, clamp(uD * 0.5 + base, 0, 1));
-  desenharBraco('D', ombro, clamp(uE * 0.5 + base, 0, 1));
+  desenharBraco('E', ombro, norm, clamp(uD * 0.5 + base, 0, 1));
+  desenharBraco('D', ombro, norm, clamp(uE * 0.5 + base, 0, 1));
 
   // cabeca: rosto, orelha e cabelo
   ctx.fillStyle = COR.pele;
