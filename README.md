@@ -17,6 +17,19 @@ Jogue: https://imptrck.github.io/altinhaonline/
 | `L` | pé direito |
 | `Esc` | opções / pausa |
 
+## Em dupla (mesmo teclado)
+
+Dois amigos, uma bola. A partitura é compartilhada e **cada nota tem dono**: a
+bola vai de um boneco pro outro, e quando é a sua vez o seu lado acende.
+
+| jogador | teclas |
+|---|---|
+| esquerda | `A` pé esq · `S` cabeça · `D` pé dir |
+| direita | `J` pé esq · `K` cabeça · `L` pé dir |
+
+Cooperativo: placar e bolas são dos dois. E o detalhe que faz a graça — **o seu
+erro de tempo chega torto pra ele**. Passe porco, problema dele.
+
 ## Desafio do dia
 
 A partitura sai de um sorteio **semeado pela data**: todo mundo que abrir hoje

@@ -79,9 +79,13 @@
     </div>
     <p id="selo"></p>
     <div class="botoes">
-      <button id="btIniciar">começar</button>
+      <button id="btIniciar">sozinho</button>
+      <button id="btDupla">em dupla</button>
       <button id="btOpcoes" class="sec">opções</button>
     </div>
+    <p style="font-size:12px">Em dupla, no mesmo teclado: um joga com
+       <b>A S D</b>, o outro com <b>J K L</b> — pé esquerdo, cabeça, pé direito.
+       A bola vai de um pro outro, e o seu erro de tempo chega torto pra ele.</p>
   </div>
 
   <div class="tela" id="telaFim" hidden>
@@ -339,7 +343,17 @@ const erroMsDa = nota => (actx.currentTime - offsetMs / 1000 - tempoDaBatida(not
    2. PARTITURA  —  lances encadeados, dificuldade subindo
    ========================================================================== */
 
-const CX = 450, CHAO = 566;
+const TELA_CX = 450, CHAO = 566;
+
+// Modo dupla: dois jogadores na mesma tela, cada um no seu lado. A partitura
+// e compartilhada e cada nota tem dono; a bola cruza de um pro outro.
+let modo = 'solo';
+const ehDupla = () => modo === 'dupla';
+const cxDe = q => ehDupla() ? (q ? 650 : 250) : TELA_CX;
+const escX = () => ehDupla() ? 0.78 : 1;          // lados mais estreitos na dupla
+const LANES_DUPLA = ['peE', 'cabeca', 'peD'];
+const TECLAS_DUPLA = [{ peE:'a', cabeca:'s', peD:'d' }, { peE:'j', cabeca:'k', peD:'l' }];
+const CX = TELA_CX;
 
 const PARTES = {
   peE:    { tecla:'a', rot:'A', nome:'pé E',   x:-98, y:470, cor:'#58a6ff', hz:300 },
@@ -408,6 +422,7 @@ function salvarRecordes() {
 }
 
 function gerar(ate) {
+  if (ehDupla()) return gerarDupla(ate);
   while (proxB < ate) {
     const nivel = Math.min(3, Math.max(0, Math.floor((proxB - 8) / 20)));
     let pool = LANCES.filter(l => l.dif <= nivel);
@@ -435,10 +450,29 @@ function gerar(ate) {
   }
 }
 
-function posParte(parte, dx) {
-  if (parte === 'chao') return { x: CX + (dx || 0), y: CHAO };
+// Na dupla o jogador toca 1 a 3 vezes e PASSA. O passe leva 2 batidas, que e
+// o tempo de a bola cruzar; os toques proprios ficam a 1 batida.
+let donoAtual = 0;
+function gerarDupla(ate) {
+  while (proxB < ate) {
+    const quantos = 1 + (rnd() * 3 | 0);
+    for (let i = 0; i < quantos; i++) {
+      const id = ++idLance;
+      infoLance[id] = { nome: '', dif: 0, total: 1, limpos: 0, sujo: false };
+      let parte = LANES_DUPLA[(rnd() * LANES_DUPLA.length) | 0];
+      notas.push({ beat: proxB, parte: parte, quem: donoAtual, lance: id,
+                   ultima: true, julgada: false, dx: 0 });
+      proxB += (i === quantos - 1) ? 2 : 1;
+    }
+    donoAtual = 1 - donoAtual;
+  }
+}
+
+function posParte(parte, dx, quem) {
+  const base = cxDe(quem || 0);
+  if (parte === 'chao') return { x: base + (dx || 0), y: CHAO };
   const p = PARTES[parte];
-  return { x: CX + p.x + (dx || 0), y: p.y };
+  return { x: base + p.x * escX() + (dx || 0), y: p.y };
 }
 
 /* ==========================================================================
@@ -454,18 +488,18 @@ const DERIVA_MAX = 118;                        // px antes de perder a bola
 let rodando = false, pontos = 0, combo = 0, melhorCombo = 0, vidas = 3;
 let deriva = 0, bolaVis = { x: CX, y: CHAO }, rastro = [];
 let cai = { b0: -999, p0: { x: CX, y: CHAO }, vx: 0 };
-let flashes = [], faiscas = [], anuncio = null, alcance = {}, errosRec = [];
-let agacha = 0, derivaVel = 0, derivaAnt = 0, esmaga = -99, pausado = false;
+let flashes = [], faiscas = [], anuncio = null, alcance = [{}, {}], errosRec = [];
+let agacha = [0, 0], derivaVel = 0, derivaAnt = 0, esmaga = -99, pausado = false;
 let gradBola = null, ultimoQuadro = 0, dtQuadro = 0.016;
 // A deriva LOGICA (deriva) manda no jogo; a VISUAL persegue ela suavemente.
 // Sem isso a bola teleporta de lado a cada toque: o trecho novo da parabola
 // ja comeca na deriva nova enquanto a bola acabou de chegar na antiga.
-let derivaVis = 0, pesoVis = 0;
+let derivaVis = 0, pesoVis = [0, 0];
 let tremor = 0, punch = 0, clarao = { a: 0, cor: '#e3b341' }, paradoAte = 0, calor = 0;
 const suco = { ligado: true };
 function sacudir(f) { if (suco.ligado) tremor = Math.max(tremor, f); }
 function piscar(cor, a) { if (suco.ligado && a > clarao.a) { clarao.a = a; clarao.cor = cor; } }
-let segurando = null;   // { parte, tipo, de, ate } enquanto a bola esta presa
+let segurando = null;   // { quem, parte, tipo, de, ate } enquanto a bola esta presa
 const perseguir = (de, para, taxa) => de + (para - de) * (1 - Math.exp(-dtQuadro * taxa));
 let ultimoJulg = null;
 
@@ -481,8 +515,8 @@ function bolaNaParabola(b) {
   const par = trecho(b), a = par[0], c = par[1];
   if (!a) return { x: CX, y: CHAO };
   if (!c) return posParte(a.parte, a.dx);
-  const p0 = posParte(a.parte, a.dx);
-  const p1 = posParte(c.parte, c.julgada ? c.dx : derivaVis);
+  const p0 = posParte(a.parte, a.dx, a.quem || 0);
+  const p1 = posParte(c.parte, c.julgada ? c.dx : derivaVis, c.quem || 0);
   const dt = c.beat - a.beat;
   // bola morta: fica pousada no corpo em vez de descrever parabola
   if (a.segurar && a.tipo === 'matar' && c.solta) {
@@ -491,7 +525,8 @@ function bolaNaParabola(b) {
              y: p0.y - 14 - assenta };
   }
   const u = clamp((b - a.beat) / dt, 0, 1);
-  const arco = Math.min(300, 82 * Math.pow(dt, 1.4));
+  let arco = Math.min(300, 82 * Math.pow(dt, 1.4));
+  if ((a.quem || 0) !== (c.quem || 0)) arco = Math.min(330, arco * 1.5);   // passe cruza mais alto
   return {
     x: p0.x + (p1.x - p0.x) * u,
     y: p0.y + (p1.y - p0.y) * u - arco * 4 * u * (1 - u),
@@ -537,10 +572,12 @@ function faiscar(p, cor, n) {
   }
 }
 
-function pressionar(parte) {
+function pressionar(parte, quem) {
+  quem = quem || 0;
   if (!rodando || segurando) return;
   const alvo = notaPendente();
   if (!alvo) return;
+  if ((alvo.quem || 0) !== quem) return;        // nota nao e sua: ignora
   if (alvo.solta) { toqueNoVazio(); return; }        // era pra SOLTAR, nao apertar
   const errMs = erroMsDa(alvo);
 
@@ -554,13 +591,14 @@ function pressionar(parte) {
   }
   julgar(alvo, errMs);
   if (alvo.segurar) {
-    segurando = { parte: parte, tipo: alvo.tipo, de: alvo.beat, ate: alvo.beat + alvo.segurar };
+    segurando = { quem: quem, parte: parte, tipo: alvo.tipo, de: alvo.beat, ate: alvo.beat + alvo.segurar };
   }
 }
 
 // soltar a tecla: so vale se a nota pendente for a companheira de SOLTAR
-function soltar(parte) {
+function soltar(parte, quem) {
   if (!rodando || !segurando || parte !== segurando.parte) return;
+  if (segurando.quem !== (quem || 0)) return;
   const alvo = notaPendente();
   const err = alvo && alvo.solta ? erroMsDa(alvo) : -9999;
   segurando = null;
@@ -600,8 +638,9 @@ function julgar(alvo, errMs) {
   errosRec.push(errMs);
   if (errosRec.length > 24) errosRec.shift();
 
-  const p = posParte(alvo.parte, derivaVis);
-  alcance[alvo.parte] = { b0: batidaVisual(), p: p };
+  const dono = alvo.quem || 0;
+  const p = posParte(alvo.parte, derivaVis, dono);
+  alcance[dono][alvo.parte] = { b0: batidaVisual(), p: p };
   somToque(actx.currentTime, PARTES[alvo.parte].hz, q === 'perf');
   faiscar(p, q === 'perf' ? '#e3b341' : q === 'bom' ? '#3fb950' : '#8b949e',
           q === 'perf' ? 14 : q === 'bom' ? 8 : 4);
@@ -609,7 +648,7 @@ function julgar(alvo, errMs) {
   if (q === 'perf' && suco.ligado) punch = Math.max(punch, 0.014);
   if (combo > 0 && combo % 10 === 0) { torcida(actx.currentTime, 0.5, false); piscar('#3fb950', 0.10); }
   esmaga = batidaVisual();
-  agacha = q === 'perf' ? 4 : 7;
+  agacha[alvo.quem || 0] = q === 'perf' ? 4 : 7;
 
   if (alvo.ultima && !inf.sujo && inf.limpos === inf.total && inf.dif >= 1) {
     pontos += 400 + inf.dif * 250;
@@ -646,10 +685,10 @@ function queda(motivo) {
   if (vidas <= 0) { fim(); return; }
 
   // relanca: limpa a partitura e monta um saque do chao
-  deriva = 0; derivaVis = 0; pesoVis = 0; segurando = null;
+  deriva = 0; derivaVis = 0; pesoVis = [0, 0]; segurando = null;
   notas = []; infoLance = {};
   proxB = Math.ceil(b + 4);
-  notas.push({ beat: proxB - 2, parte: 'chao', lance: 0,
+  notas.push({ beat: proxB - 2, parte: 'chao', lance: 0, quem: donoAtual,
                ultima: false, julgada: true, dx: 0 });
   gerar(proxB + 20);
 }
@@ -737,7 +776,8 @@ function quadro(ts) {
   tremor = perseguir(tremor, 0, 11);
   punch = perseguir(punch, 0, 13);
   clarao.a = perseguir(clarao.a, 0, 6);
-  agacha = perseguir(agacha, 0, 10);
+  agacha[0] = perseguir(agacha[0], 0, 10);
+  agacha[1] = perseguir(agacha[1], 0, 10);
   derivaVis = perseguir(derivaVis, deriva, 11);
   derivaVel = perseguir(derivaVel, clamp((derivaVis - derivaAnt) / dt * 0.05, -26, 26), 12);
   derivaAnt = derivaVis;
@@ -756,19 +796,17 @@ requestAnimationFrame(quadro);
    6. DESENHO
    ========================================================================== */
 
-const REPOUSO = {
-  peE: { x: CX - 56, y: CHAO - 8 },
-  peD: { x: CX + 56, y: CHAO - 8 },
-};
+const repousoPe = (lado, q) => ({ x: cxDe(q) + (lado === 'E' ? -56 : 56) * escX(), y: CHAO - 8 });
 const OSSO_PERNA = 86, OSSO_BRACO = 46;
 const suave = u => u * u * (3 - 2 * u);
 
 // proxima nota nao julgada dessa parte, se ja da pra comecar a armar o toque
-function chegando(parte, b) {
+function chegando(parte, b, q) {
   for (let i = 0; i < notas.length; i++) {
     const n = notas[i];
     if (n.beat > b + 0.55) return null;
     if (n.beat < b - 0.05 || n.julgada || n.solta || n.parte !== parte) continue;
+    if ((n.quem || 0) !== q) continue;
     return n;
   }
   return null;
@@ -776,12 +814,13 @@ function chegando(parte, b) {
 
 // o quanto essa parte do corpo esta empenhada agora: 0 parada, 1 no toque.
 // antes do toque e armacao, depois e continuacao do movimento.
-function empenho(parte, b) {
-  if (segurando && segurando.parte === parte) return { u: 1, saindo: false };
+function empenho(parte, b, q) {
+  q = q || 0;
+  if (segurando && segurando.parte === parte && segurando.quem === q) return { u: 1, saindo: false };
   let uA = 0, uF = 0;
-  const n = chegando(parte, b);
+  const n = chegando(parte, b, q);
   if (n) uA = suave(clamp(1 - (n.beat - b) / 0.55, 0, 1));
-  const r = alcance[parte];
+  const r = alcance[q][parte];
   if (r && b - r.b0 < 0.5) uF = suave(clamp(1 - (b - r.b0) / 0.5, 0, 1));
   return { u: Math.max(uA, uF), saindo: uF > uA };
 }
@@ -798,6 +837,15 @@ function articular(a, z, osso, lado) {
            y: a.y + uy * meio + ux * h * -lado };
 }
 
+// quem nao esta na vez e desenhado com a paleta apagada. Nao da pra usar
+// globalAlpha: os membros se sobrepoem, e a transparencia deixa a costura
+// toda aparecendo por dentro do corpo.
+let PAL = null;
+const COR_APAGADA = {
+  pele:'#6a5344', peleSom:'#5a4638', camisa:'#7d6733', camisaSom:'#6b5a2d',
+  gola:'#2b3b52', shorts:'#2a3b52', shortsSom:'#233248', meia:'#77808a',
+  chuteira:'#141a23', cabelo:'#221b17',
+};
 const COR = {
   pele:     '#c98b5e',
   peleSom:  '#a86f47',
@@ -835,26 +883,26 @@ function chuteira(tornozelo, joelho, sig) {
   ctx.save();
   ctx.translate(tornozelo.x, tornozelo.y);
   ctx.rotate(ang - Math.PI / 2);
-  ctx.fillStyle = COR.chuteira;
+  ctx.fillStyle = PAL.chuteira;
   ctx.beginPath(); ctx.ellipse(sig * 2, 7, 8.5, 12, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#0d1219';
   ctx.beginPath(); ctx.ellipse(sig * 2, 13, 8.5, 4, 0, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
 
-function desenharPerna(lado, b, quadril) {
+function desenharPerna(lado, b, quadril, q) {
   const sig = lado === 'E' ? -1 : 1;
-  const ePe = empenho('pe' + lado, b), eCo = empenho('coxa' + lado, b);
-  const rep = REPOUSO['pe' + lado];
+  const ePe = empenho('pe' + lado, b, q), eCo = empenho('coxa' + lado, b, q);
+  const rep = repousoPe(lado, q);
 
-  const toque = posParte('pe' + lado, derivaVis);
+  const toque = posParte('pe' + lado, derivaVis, q);
   const destino = ePe.saindo ? { x: toque.x + sig * 12, y: toque.y - 20 } : toque;
   let pe = { x: rep.x + (destino.x - rep.x) * ePe.u,
              y: rep.y + (destino.y - rep.y) * ePe.u };
   let joelho = articular(quadril, pe, OSSO_PERNA, sig);
 
   if (eCo.u > 0.01) {
-    const pc = posParte('coxa' + lado, derivaVis);
+    const pc = posParte('coxa' + lado, derivaVis, q);
     const dj = eCo.saindo ? { x: pc.x, y: pc.y - 12 } : pc;
     joelho = { x: joelho.x + (dj.x - joelho.x) * eCo.u,
                y: joelho.y + (dj.y - joelho.y) * eCo.u };
@@ -862,16 +910,16 @@ function desenharPerna(lado, b, quadril) {
     pe = { x: pe.x + (pend.x - pe.x) * eCo.u, y: pe.y + (pend.y - pe.y) * eCo.u };
   }
 
-  if (segurando && segurando.tipo === 'giro' && segurando.parte === 'pe' + lado) {
+  if (segurando && segurando.quem === q && segurando.tipo === 'giro' && segurando.parte === 'pe' + lado) {
     const k = clamp((b - segurando.de) / (segurando.ate - segurando.de), 0, 1);
     const ang = k * Math.PI * 2 - Math.PI / 2;
     pe = { x: bolaVis.x + Math.cos(ang) * 36, y: bolaVis.y + Math.sin(ang) * 36 };
     joelho = articular(quadril, pe, OSSO_PERNA, sig);
   }
 
-  membro(quadril, joelho, 30, 21, COR.pele);            // coxa
-  membro(joelho, pe, 20, 12, COR.pele);                 // canela
-  membro(entre(joelho, pe, 0.38), pe, 17, 12, COR.meia); // meiao
+  membro(quadril, joelho, 30, 21, PAL.pele);            // coxa
+  membro(joelho, pe, 20, 12, PAL.pele);                 // canela
+  membro(entre(joelho, pe, 0.38), pe, 17, 12, PAL.meia); // meiao
   chuteira(pe, joelho, sig);
 
   const noAr = clamp((rep.y - pe.y) / 90, 0, 1);
@@ -889,10 +937,10 @@ function desenharBraco(lado, ombro, norm, levanta) {
   const mao = { x: raiz.x + sig * (34 + levanta * 28) - derivaVel * 1.1,
                 y: raiz.y + 74 - levanta * 62 };
   const cot = articular(raiz, mao, OSSO_BRACO, -sig);
-  membro(raiz, cot, 19, 14, COR.pele);
-  membro(cot, mao, 13, 10, COR.pele);
-  membro(raiz, entre(raiz, cot, 0.5), 23, 18, COR.camisa);   // manga
-  ctx.fillStyle = COR.pele;
+  membro(raiz, cot, 19, 14, PAL.pele);
+  membro(cot, mao, 13, 10, PAL.pele);
+  membro(raiz, entre(raiz, cot, 0.5), 23, 18, PAL.camisa);   // manga
+  ctx.fillStyle = PAL.pele;
   ctx.beginPath(); ctx.arc(mao.x, mao.y, 6.5, 0, Math.PI * 2); ctx.fill();
 }
 
@@ -901,7 +949,7 @@ function desenharTronco(quadril, ombro) {
   const d = Math.sqrt(dx * dx + dy * dy) || 1;
   const nx = -dy / d, ny = dx / d;
   const lq = 21, lo = 27;
-  ctx.fillStyle = COR.camisa;
+  ctx.fillStyle = PAL.camisa;
   ctx.beginPath();
   ctx.moveTo(quadril.x + nx * lq, quadril.y + ny * lq);
   ctx.lineTo(ombro.x + nx * lo, ombro.y + ny * lo);
@@ -910,7 +958,7 @@ function desenharTronco(quadril, ombro) {
   ctx.quadraticCurveTo(quadril.x, quadril.y + 8, quadril.x + nx * lq, quadril.y + ny * lq);
   ctx.closePath(); ctx.fill();
   // sombra de um lado so, pra dar volume
-  ctx.fillStyle = COR.camisaSom;
+  ctx.fillStyle = PAL.camisaSom;
   ctx.beginPath();
   ctx.moveTo(quadril.x + nx * lq, quadril.y + ny * lq);
   ctx.lineTo(ombro.x + nx * lo, ombro.y + ny * lo);
@@ -918,25 +966,27 @@ function desenharTronco(quadril, ombro) {
   ctx.lineTo(quadril.x + nx * lq * 0.45, quadril.y + ny * lq * 0.45);
   ctx.closePath(); ctx.fill();
   // gola
-  ctx.fillStyle = COR.gola;
+  ctx.fillStyle = PAL.gola;
   ctx.beginPath(); ctx.ellipse(ombro.x, ombro.y - 6, 13, 6, 0, 0, Math.PI * 2); ctx.fill();
 }
 
-function desenharJogador(b) {
+function desenharJogador(b, q, apagado) {
+  PAL = apagado ? COR_APAGADA : COR;
+  const meu = cxDe(q);
   const incl = clamp(derivaVis * 0.26, -42, 42);
-  const eCab = empenho('cabeca', b);
+  const eCab = empenho('cabeca', b, q);
   const bal  = Math.sin(b * Math.PI) * 2.5;
   const resp = Math.sin(b * Math.PI / 2) * 2;
   const alto = eCab.u * 16;
 
-  const uE = Math.max(empenho('peE', b).u, empenho('coxaE', b).u);
-  const uD = Math.max(empenho('peD', b).u, empenho('coxaD', b).u);
-  pesoVis = perseguir(pesoVis, (uE - uD) * 11, 13);
-  const peso = pesoVis;
+  const uE = Math.max(empenho('peE', b, q).u, empenho('coxaE', b, q).u);
+  const uD = Math.max(empenho('peD', b, q).u, empenho('coxaD', b, q).u);
+  pesoVis[q] = perseguir(pesoVis[q], (uE - uD) * 11, 13);
+  const peso = pesoVis[q], ag = agacha[q];
 
-  const quadril = { x: CX + incl * 0.5 + bal + peso,  y: 392 + agacha - alto };
-  const ombro   = { x: CX + incl * 1.0 + bal * 1.5 + peso * 0.5, y: 250 + agacha * 0.5 - alto + resp };
-  const cabeca  = { x: CX + incl * 1.3 + bal * 2 + peso * 0.3,   y: 192 - alto - eCab.u * 10 };
+  const quadril = { x: meu + incl * 0.5 + bal + peso,  y: 392 + ag - alto };
+  const ombro   = { x: meu + incl * 1.0 + bal * 1.5 + peso * 0.5, y: 250 + ag * 0.5 - alto + resp };
+  const cabeca  = { x: meu + incl * 1.3 + bal * 2 + peso * 0.3,   y: 192 - alto - eCab.u * 10 };
   cabeca.x += clamp((bolaVis.x - cabeca.x) * 0.05, -9, 9);
 
   ctx.fillStyle = 'rgba(0,0,0,.28)';
@@ -944,13 +994,13 @@ function desenharJogador(b) {
   ctx.ellipse(quadril.x, CHAO + 6, 62, 10, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  const pE = desenharPerna('E', b, quadril);
-  const pD = desenharPerna('D', b, quadril);
+  const pE = desenharPerna('E', b, quadril, q);
+  const pD = desenharPerna('D', b, quadril, q);
 
   // calcao por cima das coxas
-  membro(quadril, entre(quadril, pE.joelho, 0.42), 36, 27, COR.shorts);
-  membro(quadril, entre(quadril, pD.joelho, 0.42), 36, 27, COR.shorts);
-  ctx.fillStyle = COR.shortsSom;
+  membro(quadril, entre(quadril, pE.joelho, 0.42), 36, 27, PAL.shorts);
+  membro(quadril, entre(quadril, pD.joelho, 0.42), 36, 27, PAL.shorts);
+  ctx.fillStyle = PAL.shortsSom;
   ctx.beginPath();
   ctx.ellipse(quadril.x, quadril.y - 2, 24, 15, 0, 0, Math.PI * 2);
   ctx.fill();
@@ -960,7 +1010,7 @@ function desenharJogador(b) {
   const tdx = ombro.x - quadril.x, tdy = ombro.y - quadril.y;
   const td = Math.sqrt(tdx * tdx + tdy * tdy) || 1;
   const norm = { x: -tdy / td, y: tdx / td };
-  membro(ombro, { x: cabeca.x, y: cabeca.y + 16 }, 15, 13, COR.pele);   // pescoco
+  membro(ombro, { x: cabeca.x, y: cabeca.y + 16 }, 15, 13, PAL.pele);   // pescoco
 
   const tensao = Math.abs(derivaVis) / DERIVA_MAX;
   const base = tensao * 0.45 + eCab.u * 0.3 + Math.abs(bal) * 0.04;
@@ -968,14 +1018,14 @@ function desenharJogador(b) {
   desenharBraco('D', ombro, norm, clamp(uE * 0.5 + base, 0, 1));
 
   // cabeca: rosto, orelha e cabelo
-  ctx.fillStyle = COR.pele;
+  ctx.fillStyle = PAL.pele;
   ctx.beginPath(); ctx.arc(cabeca.x, cabeca.y, 25, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = COR.peleSom;
+  ctx.fillStyle = PAL.peleSom;
   ctx.beginPath();
   ctx.arc(cabeca.x, cabeca.y, 25, Math.PI * (incl > 0 ? -0.42 : 0.58),
                                 Math.PI * (incl > 0 ?  0.42 : 1.42));
   ctx.fill();
-  ctx.fillStyle = COR.cabelo;
+  ctx.fillStyle = PAL.cabelo;
   ctx.beginPath();
   ctx.arc(cabeca.x, cabeca.y - 3, 25, Math.PI * 1.06, Math.PI * 1.94);
   ctx.fill();
@@ -983,8 +1033,10 @@ function desenharJogador(b) {
 
 function desenharAlvos(b) {
   const prox = notaPendente();
-  for (const k in PARTES) {
-    const p = PARTES[k], pt = posParte(k, derivaVis);
+  const vez = prox ? (prox.quem || 0) : 0;
+  const lista = ehDupla() ? LANES_DUPLA : Object.keys(PARTES);
+  for (const k of lista) {
+    const p = PARTES[k], pt = posParte(k, derivaVis, vez);
     const ativo = prox && prox.parte === k;
     ctx.strokeStyle = ativo ? p.cor : 'rgba(139,148,158,.32)';
     ctx.lineWidth = ativo ? 2.5 : 1.5;
@@ -998,7 +1050,7 @@ function desenharAlvos(b) {
   if (prox) {
     const faltam = prox.beat - b;
     if (!prox.solta && faltam > -0.4 && faltam < 1.6) {
-      const pt = posParte(prox.parte, derivaVis);
+      const pt = posParte(prox.parte, derivaVis, prox.quem || 0);
       const r = 17 + clamp(faltam, 0, 1.6) * 44;
       ctx.strokeStyle = PARTES[prox.parte].cor;
       ctx.globalAlpha = clamp(1 - Math.abs(faltam) / 1.6, 0.15, 1);
@@ -1013,7 +1065,7 @@ function desenharAlvos(b) {
 function desenharSegurar(b) {
   if (!segurando) return;
   const k = clamp((b - segurando.de) / (segurando.ate - segurando.de), 0, 1);
-  const pt = segurando.tipo === 'giro' ? bolaVis : posParte(segurando.parte, derivaVis);
+  const pt = segurando.tipo === 'giro' ? bolaVis : posParte(segurando.parte, derivaVis, segurando.quem);
   ctx.strokeStyle = 'rgba(13,17,23,.55)';
   ctx.lineWidth = 7;
   ctx.beginPath(); ctx.arc(pt.x, pt.y, 32, 0, Math.PI * 2); ctx.stroke();
@@ -1047,6 +1099,17 @@ function desenharHUD(b) {
     ctx.fillStyle = '#8b949e';
     ctx.font = '12px ui-sans-serif,system-ui,sans-serif';
     ctx.fillText('x' + (1 + Math.min(combo, 60) / 30).toFixed(1), 24, 110);
+  }
+
+  if (ehDupla()) {
+    const prox = notaPendente();
+    const vez = prox ? (prox.quem || 0) : -1;
+    ctx.textAlign = 'center';
+    for (let q = 0; q < 2; q++) {
+      ctx.fillStyle = vez === q ? '#e3b341' : 'rgba(139,148,158,.45)';
+      ctx.font = (vez === q ? '800 ' : '600 ') + '15px ui-sans-serif,system-ui,sans-serif';
+      ctx.fillText(q ? 'J K L' : 'A S D', cxDe(q), 600);
+    }
   }
 
   // bolas restantes
@@ -1136,7 +1199,11 @@ function desenhar(b) {
   ctx.beginPath(); ctx.moveTo(0, CHAO); ctx.lineTo(900, CHAO); ctx.stroke();
 
   desenharAlvos(b);
-  desenharJogador(b);
+  if (ehDupla()) {
+    const prox = notaPendente();
+    const vez = prox ? (prox.quem || 0) : -1;
+    for (let q = 0; q < 2; q++) desenharJogador(b, q, !(vez === -1 || vez === q));
+  } else desenharJogador(b, 0, false);
 
   // rastro
   ctx.fillStyle = '#e6edf3';
@@ -1391,15 +1458,29 @@ addEventListener('keydown', function (e) {
     if (k === ' ' || k === 'Enter') comecar();
     return;
   }
-  const parte = PORTECLA[k === 'Spacebar' ? ' ' : k];
-  if (parte) pressionar(parte);
+  const t = (k === 'Spacebar' ? ' ' : k);
+  if (ehDupla()) {
+    for (let q = 0; q < 2; q++)
+      for (const parte in TECLAS_DUPLA[q])
+        if (TECLAS_DUPLA[q][parte] === t) { pressionar(parte, q); return; }
+    return;
+  }
+  const parte = PORTECLA[t];
+  if (parte) pressionar(parte, 0);
 });
 
 addEventListener('keyup', function (e) {
   if (!rodando || !telaOpcoes.hidden) return;
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-  const parte = PORTECLA[k === 'Spacebar' ? ' ' : k];
-  if (parte) soltar(parte);
+  const t = (k === 'Spacebar' ? ' ' : k);
+  if (ehDupla()) {
+    for (let q = 0; q < 2; q++)
+      for (const parte in TECLAS_DUPLA[q])
+        if (TECLAS_DUPLA[q][parte] === t) { soltar(parte, q); return; }
+    return;
+  }
+  const parte = PORTECLA[t];
+  if (parte) soltar(parte, 0);
 });
 
 // sair da janela come o keyup e deixaria a tecla presa: pausa em vez disso
@@ -1466,21 +1547,23 @@ document.getElementById('btCalibDeNovo').addEventListener('click', function () {
   telaOpcoes.hidden = true; abrirCalib();
 });
 
-function comecar() {
+function comecar(novoModo) {
   // primeira visita: calibra antes de deixar jogar
   if (precisaCalibrar) { precisaCalibrar = false; abrirCalib(); return; }
+  if (novoModo === 'solo' || novoModo === 'dupla') modo = novoModo;
   if (!actx) iniciarAudio();
   if (actx.state === 'suspended') actx.resume();
 
   pontos = 0; combo = 0; melhorCombo = 0; vidas = 3;
-  deriva = 0; derivaVis = 0; pesoVis = 0; derivaVel = 0; derivaAnt = 0; segurando = null;
+  deriva = 0; derivaVis = 0; pesoVis = [0, 0]; derivaVel = 0; derivaAnt = 0; segurando = null;
   notas = []; infoLance = {}; idLance = 0;
-  rastro = []; faiscas = []; flashes = []; alcance = {};
+  rastro = []; faiscas = []; flashes = []; alcance = [{}, {}];
+  agacha = [0, 0]; pesoVis = [0, 0]; donoAtual = 0;
   anuncio = null; ultimoJulg = null; errosRec = [];
 
   rnd = mulberry32(semear(hojeStr()));          // mesma partitura pra todo mundo hoje
   proxB = 8;                                   // 2 compassos de contagem
-  notas.push({ beat: 6, parte: 'chao', lance: 0,
+  notas.push({ beat: 6, parte: 'chao', lance: 0, quem: 0,
                ultima: false, julgada: true, dx: 0 });
   gerar(32);
 
@@ -1534,8 +1617,9 @@ function copiaNaMarra(txt, ok) {
 carregarRecordes();
 atualizarSelo();
 
-document.getElementById('btIniciar').addEventListener('click', comecar);
-document.getElementById('btDeNovo').addEventListener('click', comecar);
+document.getElementById('btIniciar').addEventListener('click', function () { comecar('solo'); });
+document.getElementById('btDupla').addEventListener('click', function () { comecar('dupla'); });
+document.getElementById('btDeNovo').addEventListener('click', function () { comecar(); });
 
 setInterval(function () {
   if (!painelCalib.hidden) {
