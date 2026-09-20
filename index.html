@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Embaixadinha</title>
+<title>Altinha</title>
 <style>
   :root{
     --bg:#0d1117; --painel:#161b22; --linha:#30363d; --txt:#e6edf3; --fraco:#8b949e;
@@ -39,6 +39,11 @@
   #calib button{background:var(--painel);color:var(--txt);padding:2px 8px;font-size:11px;
     font-weight:500;margin-left:6px}
   .grande{font-size:46px;font-weight:800;color:var(--amarelo)}
+  #selo{font-size:13px;color:var(--txt);background:var(--painel);border:1px solid var(--linha);
+    border-radius:999px;padding:6px 14px}
+  #fimRecorde{font-size:13px}
+  #calibPonto{width:54px;height:54px;border-radius:50%;background:var(--amarelo);transform:scale(.55)}
+  #calibConta{font:700 15px ui-monospace,monospace;color:var(--fraco)}
   .linhaOp{display:grid;grid-template-columns:96px 200px 54px;align-items:center;
     gap:12px;font-size:13px;color:var(--fraco)}
   .linhaOp span{font-variant-numeric:tabular-nums;color:var(--txt);font-size:12px}
@@ -60,7 +65,8 @@
   <canvas id="cv"></canvas>
 
   <div class="tela" id="telaInicio">
-    <h1>Embaixa<span>dinha</span></h1>
+    <h1>Alti<span>nha</span></h1>
+    <p style="margin-top:-8px;font-size:13px">modo embaixadinha</p>
     <p>A bola <b>é</b> o metrônomo. Cada toque cai num tempo da música — acerte na
        hora certa e ela volta centrada. Erre o tempo e ela sai torta, e você tem
        que se esticar pra salvar. Deixou cair 3 vezes, acabou.</p>
@@ -71,6 +77,7 @@
       <div class="tecla"><b>K</b><i>coxa dir.</i></div>
       <div class="tecla"><b>L</b><i>pé dir.</i></div>
     </div>
+    <p id="selo"></p>
     <div class="botoes">
       <button id="btIniciar">começar</button>
       <button id="btOpcoes" class="sec">opções</button>
@@ -81,7 +88,24 @@
     <h1>Caiu.</h1>
     <div class="grande" id="fimPontos">0</div>
     <p id="fimResumo"></p>
-    <button id="btDeNovo">de novo</button>
+    <p id="fimRecorde"></p>
+    <div class="botoes">
+      <button id="btDeNovo">de novo</button>
+      <button id="btCompartilhar" class="sec">compartilhar</button>
+    </div>
+  </div>
+
+  <div class="tela" id="telaCalib" hidden>
+    <h1 style="font-size:26px">Primeiro, calibrar</h1>
+    <p>Som e imagem chegam com atraso diferente em cada fone e cada tela. Sem
+       acertar isso o jogo parece quebrado — e a culpa não é sua.</p>
+    <p><b>Aperte espaço junto com o tambor</b>, 8 vezes.</p>
+    <div id="calibPonto"></div>
+    <div id="calibConta">0 / 8</div>
+    <div class="botoes">
+      <button id="btCalibOk" hidden>usar <span id="calibVal"></span></button>
+      <button id="btCalibPular" class="sec">pular</button>
+    </div>
   </div>
 
   <div class="tela" id="telaOpcoes" hidden>
@@ -103,6 +127,7 @@
     <button id="btTeclasPadrao" class="sec" style="padding:6px 14px;font-size:12px">restaurar padrão</button>
     <div class="botoes">
       <button id="btVoltar">voltar</button>
+      <button id="btCalibDeNovo" class="sec">calibrar</button>
       <button id="btRecomecar" class="sec">recomeçar</button>
     </div>
   </div>
@@ -124,14 +149,23 @@
    de actx.currentTime, que e o mesmo relogio que toca o som.
    ========================================================================== */
 
-const BPM = 96;
-const SPB = 60 / BPM;          // segundos por batida
-const SPS = SPB / 4;           // segundos por passo (semicolcheia)
+const BPM0 = 96;
+// Andamento variavel sem quebrar o relogio: o mapa batida<->tempo e uma lista
+// de TRECHOS. Um trecho novo so passa a valer a partir do instante t0 dele, e
+// o anterior continua valendo antes disso. Assim a batida nunca da salto, nem
+// no instante em que o andamento muda.
+let trechos = [{ beat0: 0, t0: 0, spb: 60 / BPM0 }];
+const trechoEmTempo  = t  => (trechos[1] && t  >= trechos[1].t0)    ? trechos[1] : trechos[0];
+const trechoEmBatida = bt => (trechos[1] && bt >= trechos[1].beat0) ? trechos[1] : trechos[0];
+const batidaEm = t => { const x = trechoEmTempo(t); return x.beat0 + (t - x.t0) / x.spb; };
+const tempoDaBatida = bt => { const x = trechoEmBatida(bt); return x.t0 + (bt - x.beat0) * x.spb; };
+const spbAgora = () => trechos[trechos.length - 1].spb;
+const bpmAgora = () => 60 / spbAgora();
+let bpmAlvo = BPM0;
 
 let actx = null, master = null, gMusica = null, gEfeitos = null, ruido = null;
 const vol = { geral: 80, mus: 70, efe: 95 };
-let tZero = 0;                 // actx.currentTime em que a musica comecou
-let passo = 0, tocadorId = null;
+let passo = 0, tocadorId = null;   // passo = indice de semicolcheia, em batidas/4
 let offsetMs = 0;              // latencia compensada no julgamento
 
 function iniciarAudio() {
@@ -225,28 +259,57 @@ const P_CAIXA = [.5,.18,.3,.18, .5,.18,.3,.3, .5,.18,.3,.18, .5,.3,.18,.4];
 const P_AGOGO = [1,0,0,2, 0,0,1,0, 0,2,0,0, 1,0,0,2];
 const PROG    = [55, 55, 73.42, 65.41];
 
+// A levada responde ao combo: com pouco toque na sequencia toca so o esqueleto,
+// e vai enchendo conforme voce emenda. Derrubou, desmonta. Como cada instrumento
+// e um no separado, isso e so decidir tocar ou nao.
+function camadas() {
+  const c = rodando ? combo : 0;
+  return { caixa: c >= 3, agogo: c >= 8, baixo: c >= 14, tamborim: c >= 24 };
+}
+
+const P_TAMBORIM = [0,1,0,1, 1,0,1,0, 0,1,0,1, 1,0,1,1];
+const VIRADA     = [1,0,1,1, 0,1,1,0, 1,1,0,1, 1,1,1,1];
+
 function tocarPasso(p, t) {
   const s = p % 16, compasso = (p / 16 | 0) % 4;
+  const cam = camadas();
+  // virada no ultimo compasso de cada ciclo de 8
+  const virando = ((p / 16 | 0) % 8) === 7 && s >= 8;
+
   if (P_SURDO[s]) surdo(t, P_SURDO[s]);
-  if (P_CAIXA[s]) caixa(t, P_CAIXA[s] * 0.26);
-  if (P_AGOGO[s]) agogo(t, P_AGOGO[s] === 1 ? 932 : 699, 0.1);
-  if (s === 0)  baixo(t, PROG[compasso], SPB * 1.4);
-  if (s === 10) baixo(t, PROG[compasso] * 1.5, SPB * 0.55);
+  if (cam.caixa && P_CAIXA[s]) caixa(t, P_CAIXA[s] * 0.26);
+  if (cam.agogo && P_AGOGO[s]) agogo(t, P_AGOGO[s] === 1 ? 932 : 699, 0.1);
+  if (cam.tamborim && P_TAMBORIM[s]) agogo(t, 1245, 0.05);
+  if (cam.baixo && s === 0)  baixo(t, PROG[compasso], spbAgora() * 1.4);
+  if (cam.baixo && s === 10) baixo(t, PROG[compasso] * 1.5, spbAgora() * 0.55);
+  if (virando && VIRADA[s]) caixa(t, 0.13 + (s % 4) * 0.03);
 }
 
 // agendador com lookahead: o setInterval so decide O QUE agendar;
 // quem marca a hora exata e o Web Audio.
 function bombeador() {
   if (!actx) return;
+  // o trecho futuro vira presente quando a hora dele chega
+  if (trechos[1] && actx.currentTime >= trechos[1].t0) trechos.shift();
+
   const horizonte = actx.currentTime + 0.20;
-  while (tZero + passo * SPS < horizonte) {
-    tocarPasso(passo, tZero + passo * SPS);
+  for (;;) {
+    // troca de andamento so na virada do compasso, e ancorada no instante exato
+    if (passo % 16 === 0 && !trechos[1] && Math.abs(bpmAlvo - bpmAgora()) > 0.5) {
+      const bt = passo * 0.25;
+      trechos.push({ beat0: bt, t0: tempoDaBatida(bt), spb: 60 / bpmAlvo });
+    }
+    const t = tempoDaBatida(passo * 0.25);
+    if (t >= horizonte) break;
+    tocarPasso(passo, t);
     passo++;
   }
 }
 
-const batidaVisual = () => (actx.currentTime - tZero) / SPB;
-const batidaJulg   = () => (actx.currentTime - tZero - offsetMs / 1000) / SPB;
+const batidaVisual = () => batidaEm(actx.currentTime);
+const batidaJulg   = () => batidaEm(actx.currentTime - offsetMs / 1000);
+// erro medido em TEMPO, nao em batidas: continua exato com andamento variavel
+const erroMsDa = nota => (actx.currentTime - offsetMs / 1000 - tempoDaBatida(nota.beat)) * 1000;
 
 /* ==========================================================================
    2. PARTITURA  —  lances encadeados, dificuldade subindo
@@ -283,12 +346,49 @@ const LANCES = [
 
 let notas = [], proxB = 0, idLance = 0, infoLance = {};
 
+// Desafio do dia: a partitura sai de um sorteio SEMEADO pela data, entao todo
+// mundo que abrir hoje pega exatamente a mesma sequencia e o placar e comparavel.
+// Sem servidor, sem sala.
+function hojeStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+                         + '-' + String(d.getDate()).padStart(2, '0');
+}
+const hojeBonito = () => hojeStr().split('-').reverse().slice(0, 2).join('/');
+
+function semear(txt) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < txt.length; i++) { h ^= txt.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function mulberry32(a) {
+  return function () {
+    a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+let rnd = Math.random;
+
+let rec = { geral: 0, dia: '', melhorDia: 0 };
+function carregarRecordes() {
+  try {
+    const g = JSON.parse(localStorage.getItem('embaixadinha_recordes') || 'null');
+    if (g && typeof g.geral === 'number') rec = g;
+  } catch (e) { /* modo anonimo */ }
+  if (rec.dia !== hojeStr()) { rec.dia = hojeStr(); rec.melhorDia = 0; }
+}
+function salvarRecordes() {
+  try { localStorage.setItem('embaixadinha_recordes', JSON.stringify(rec)); } catch (e) {}
+}
+
 function gerar(ate) {
   while (proxB < ate) {
     const nivel = Math.min(3, Math.max(0, Math.floor((proxB - 8) / 20)));
     let pool = LANCES.filter(l => l.dif <= nivel);
     if (!pool.length) pool = LANCES;
-    const l = pool[(Math.random() * pool.length) | 0];
+    const l = pool[(rnd() * pool.length) | 0];
     const id = ++idLance;
     infoLance[id] = { nome:l.nome, dif:l.dif, total:0, limpos:0, sujo:false };
     const doLance = [];
@@ -372,7 +472,7 @@ function bolaNaParabola(b) {
 
 // bola solta: so roda antes da primeira nota e depois de uma queda
 function bolaCaindo(b) {
-  const dt = Math.max(0, (b - cai.b0) * SPB);
+  const dt = Math.max(0, (b - cai.b0) * spbAgora());
   let y = cai.p0.y + 1100 * dt * dt * 0.5;
   let x = cai.p0.x + cai.vx * dt;
   if (y > CHAO) {                       // um quique e para
@@ -414,7 +514,7 @@ function pressionar(parte) {
   const alvo = notaPendente();
   if (!alvo) return;
   if (alvo.solta) { toqueNoVazio(); return; }        // era pra SOLTAR, nao apertar
-  const errMs = (batidaJulg() - alvo.beat) * SPB * 1000;
+  const errMs = erroMsDa(alvo);
 
   if (errMs < -JAN.ok) { toqueNoVazio(); return; }   // chutou cedo demais
   if (errMs >  JAN.ok) return;                       // ja era, o frame cuida
@@ -434,7 +534,7 @@ function pressionar(parte) {
 function soltar(parte) {
   if (!rodando || !segurando || parte !== segurando.parte) return;
   const alvo = notaPendente();
-  const err = alvo && alvo.solta ? (batidaJulg() - alvo.beat) * SPB * 1000 : -9999;
+  const err = alvo && alvo.solta ? erroMsDa(alvo) : -9999;
   segurando = null;
   if (!alvo || !alvo.solta || err < -JAN.ok) {
     if (alvo) infoLance[alvo.lance].sujo = true;
@@ -517,10 +617,30 @@ function queda(motivo) {
 
 function fim() {
   rodando = false;
+  segurando = null;
   telaFim.hidden = false;
   fimPontos.textContent = pontos.toLocaleString('pt-BR');
+
+  const bateuDia = pontos > rec.melhorDia, bateuGeral = pontos > rec.geral;
+  if (bateuDia) rec.melhorDia = pontos;
+  if (bateuGeral) rec.geral = pontos;
+  if (bateuDia || bateuGeral) salvarRecordes();
+
   fimResumo.textContent = 'maior sequência: ' + melhorCombo + ' toques'
     + (errosRec.length ? '  ·  erro médio: ' + media().toFixed(0) + ' ms' : '');
+  fimRecorde.innerHTML = bateuDia
+    ? '<b style="color:var(--amarelo)">novo recorde do dia!</b>'
+    : 'recorde de hoje: <b>' + rec.melhorDia.toLocaleString('pt-BR') + '</b>'
+      + '  ·  geral: <b>' + rec.geral.toLocaleString('pt-BR') + '</b>';
+  btCompartilhar.textContent = 'compartilhar';
+}
+
+function textoDeCompartilhar() {
+  const NL = String.fromCharCode(10);
+  return 'Fiz ' + pontos.toLocaleString('pt-BR') + ' pontos no desafio de '
+       + hojeBonito() + ' da Altinha (' + melhorCombo + ' toques seguidos).' + NL
+       + 'Mesma partitura pra todo mundo hoje — bate esse:' + NL
+       + location.origin + location.pathname;
 }
 
 const media = () => errosRec.reduce((a, b) => a + b, 0) / (errosRec.length || 1);
@@ -543,7 +663,7 @@ function quadro(ts) {
   if (!actx) return;
 
   // parado no menu nao precisa de 60: cai pra 12
-  const alvo = (rodando && telaOpcoes.hidden) ? 60 : 12;
+  const alvo = ((rodando && telaOpcoes.hidden) || calib) ? 60 : 12;
   if (ultimoQuadro && ts - ultimoQuadro < 1000 / alvo - 1) return;
   const dt = Math.min(0.05, ultimoQuadro ? (ts - ultimoQuadro) / 1000 : 0.016);
   ultimoQuadro = ts;
@@ -551,11 +671,13 @@ function quadro(ts) {
 
 
   if (rodando) {
+    // o nivel satura no 3 lá pela batida 68; dai pra frente quem aperta e o andamento
+    bpmAlvo = Math.min(BPM0 + 30, BPM0 + Math.floor(Math.max(0, b - 40) / 28) * 5);
     gerar(b + 24);
     while (notas.length > 3 && notas[1].beat < b - 6) notas.shift();
 
     const alvo = notaPendente();
-    if (alvo && (batidaJulg() - alvo.beat) * SPB * 1000 > JAN.ok) {
+    if (alvo && erroMsDa(alvo) > JAN.ok) {
       alvo.julgada = true;
       infoLance[alvo.lance] && (infoLance[alvo.lance].sujo = true);
       queda(alvo.solta ? 'segurou demais' : 'deixou passar');
@@ -579,6 +701,10 @@ function quadro(ts) {
   flashes = flashes.filter(f => b - f.b0 < 1.2);
   if (anuncio && b - anuncio.b0 > 2) anuncio = null;
 
+  if (calib) {
+    const f = ((actx.currentTime - calib.t0) / PER_CALIB) % 1;
+    calibPonto.style.transform = 'scale(' + (0.55 + Math.max(0, 1 - f * 5) * 0.5).toFixed(3) + ')';
+  }
   desenhar(b);
 }
 requestAnimationFrame(quadro);
@@ -1046,7 +1172,8 @@ function montarMapaTeclas() {
     const bt = document.createElement('button');
     bt.className = 'bind'; bt.id = 'bind-' + p;
     bt.addEventListener('click', function () {
-      if (ouvindo) {
+      if (calib) { if (k === ' ' || k === 'Spacebar') baterCalib(); return; }
+  if (ouvindo) {
         const ant = document.getElementById('bind-' + ouvindo);
         if (ant) { ant.classList.remove('ouvindo'); ant.textContent = rotuloTecla(PARTES[ouvindo].tecla); }
       }
@@ -1197,7 +1324,68 @@ addEventListener('blur', function () {
   if (rodando && telaOpcoes.hidden) { segurando = null; abrirOpcoes(); }
 });
 
+let calib = null, calibTimer = null, precisaCalibrar = false;
+try { precisaCalibrar = !localStorage.getItem('embaixadinha_opcoes'); } catch (e) {}
+const calibPonto = document.getElementById('calibPonto');
+const calibConta = document.getElementById('calibConta');
+const telaCalib  = document.getElementById('telaCalib');
+const btCalibOk  = document.getElementById('btCalibOk');
+const PER_CALIB  = 0.6;                       // segundos entre tambores
+
+function abrirCalib() {
+  if (!actx) iniciarAudio();
+  if (actx.state === 'suspended') actx.resume();
+  telaInicio.hidden = true; telaOpcoes.hidden = true; telaFim.hidden = true;
+  telaCalib.hidden = false;
+  btCalibOk.hidden = true;
+  calibConta.textContent = '0 / 8';
+  calib = { t0: actx.currentTime + 0.6, prox: 0, erros: [] };
+  clearInterval(calibTimer);
+  calibTimer = setInterval(function () {
+    if (!calib) return;
+    const hz = actx.currentTime + 0.2;
+    while (calib.t0 + calib.prox * PER_CALIB < hz) {
+      surdo(calib.t0 + calib.prox * PER_CALIB, calib.prox % 4 === 0 ? 1 : 0.55);
+      calib.prox++;
+    }
+  }, 25);
+}
+
+function baterCalib() {
+  if (!calib) return;
+  const t = actx.currentTime;
+  const n = Math.round((t - calib.t0) / PER_CALIB);
+  if (n < 1) return;
+  calib.erros.push((t - (calib.t0 + n * PER_CALIB)) * 1000);
+  calibConta.textContent = Math.min(8, calib.erros.length) + ' / 8';
+  if (calib.erros.length >= 8) {
+    // mediana: uma batida perdida nao estraga a medida, a media estragaria
+    const e = calib.erros.slice(-8).sort(function (a, b) { return a - b; });
+    calib.medido = Math.round((e[3] + e[4]) / 2);
+    document.getElementById('calibVal').textContent = calib.medido + ' ms';
+    btCalibOk.hidden = false;
+  }
+}
+
+function fecharCalib(usar) {
+  if (usar && calib && typeof calib.medido === 'number') porLatencia(calib.medido);
+  calib = null;
+  clearInterval(calibTimer); calibTimer = null;
+  calibPonto.style.transform = 'scale(.55)';
+  telaCalib.hidden = true;
+  telaInicio.hidden = false;
+  salvarOpcoes();
+}
+
+btCalibOk.addEventListener('click', function () { fecharCalib(true); });
+document.getElementById('btCalibPular').addEventListener('click', function () { fecharCalib(false); });
+document.getElementById('btCalibDeNovo').addEventListener('click', function () {
+  telaOpcoes.hidden = true; abrirCalib();
+});
+
 function comecar() {
+  // primeira visita: calibra antes de deixar jogar
+  if (precisaCalibrar) { precisaCalibrar = false; abrirCalib(); return; }
   if (!actx) iniciarAudio();
   if (actx.state === 'suspended') actx.resume();
 
@@ -1207,6 +1395,7 @@ function comecar() {
   rastro = []; faiscas = []; flashes = []; alcance = {};
   anuncio = null; ultimoJulg = null; errosRec = [];
 
+  rnd = mulberry32(semear(hojeStr()));          // mesma partitura pra todo mundo hoje
   proxB = 8;                                   // 2 compassos de contagem
   notas.push({ beat: 6, parte: 'chao', lance: 0,
                ultima: false, julgada: true, dx: 0 });
@@ -1214,13 +1403,15 @@ function comecar() {
 
   cai = { b0: -999, p0: { x: CX, y: CHAO }, vx: 0 };
   passo = 0;
-  tZero = actx.currentTime + 0.12;
+  bpmAlvo = BPM0;
+  trechos = [{ beat0: 0, t0: actx.currentTime + 0.12, spb: 60 / BPM0 }];
   rodando = true;
   if (!tocadorId) tocadorId = setInterval(bombeador, 25);
 
   telaInicio.hidden = true;
   telaFim.hidden = true;
   painelCalib.hidden = false;
+  atualizarSelo();
   dica.hidden = false;
 }
 
@@ -1229,6 +1420,36 @@ document.addEventListener('visibilitychange', function () {
   if (document.hidden) actx.suspend();
   else if (telaOpcoes.hidden) actx.resume();
 });
+
+const fimRecorde = document.getElementById('fimRecorde');
+const btCompartilhar = document.getElementById('btCompartilhar');
+const selo = document.getElementById('selo');
+
+function atualizarSelo() {
+  selo.innerHTML = 'desafio de <b>' + hojeBonito() + '</b>'
+    + (rec.melhorDia ? '  ·  seu recorde hoje: <b>' + rec.melhorDia.toLocaleString('pt-BR') + '</b>' : '');
+}
+
+btCompartilhar.addEventListener('click', function () {
+  const txt = textoDeCompartilhar();
+  // clipboard so existe em contexto seguro; fora dele cai no truque do textarea
+  const pronto = () => { btCompartilhar.textContent = 'copiado!'; };
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(txt).then(pronto, function () { copiaNaMarra(txt, pronto); });
+  } else copiaNaMarra(txt, pronto);
+});
+
+function copiaNaMarra(txt, ok) {
+  const ta = document.createElement('textarea');
+  ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); ok(); }
+  catch (e) { btCompartilhar.textContent = 'copie: ' + location.href; }
+  document.body.removeChild(ta);
+}
+
+carregarRecordes();
+atualizarSelo();
 
 document.getElementById('btIniciar').addEventListener('click', comecar);
 document.getElementById('btDeNovo').addEventListener('click', comecar);

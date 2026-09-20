@@ -1,6 +1,6 @@
-# Embaixadinha
+# Altinha
 
-Jogo de ritmo onde a bola **é** o metrônomo. Cada toque cai num tempo da música;
+Jogo de ritmo onde a bola **é** o metrônomo. Modo atual: embaixadinha. Cada toque cai num tempo da música;
 acerte na hora e ela volta centrada, erre e ela sai torta — e aí você tem que se
 esticar pra salvar. Três quedas e acabou.
 
@@ -17,6 +17,14 @@ Jogue: https://imptrck.github.io/altinhaonline/
 | `L` | pé direito |
 | `Esc` | opções / pausa |
 
+## Desafio do dia
+
+A partitura sai de um sorteio **semeado pela data**: todo mundo que abrir hoje
+pega exatamente a mesma sequência de lances, então o placar é comparável. Sem
+servidor, sem sala. O botão *compartilhar* no fim copia o seu resultado.
+
+Recorde do dia e recorde geral ficam salvos no navegador.
+
 ## Notas longas (segurar)
 
 Alguns toques pedem que você **segure** a tecla em vez de tocar. Um anel de
@@ -29,9 +37,10 @@ julgado como um toque, com a mesma janela de tempo.
 
 Soltar cedo derruba a bola. Segurar demais também.
 
-**Ajuste a latência antes de julgar seu ritmo.** Jogue uns 20 toques, olhe o "erro
-médio" no rodapé e clique em *usar como latência*. Fone Bluetooth costuma pedir
-150–250 ms; sem isso o jogo parece quebrado e a culpa não é sua.
+**Na primeira vez o jogo pede pra calibrar**: você aperta espaço junto com o tambor
+8 vezes e ele mede seu atraso sozinho (pega a mediana, então uma batida perdida não
+estraga a medida). Dá pra refazer em *opções → calibrar*. Sem isso o jogo parece
+quebrado, e a culpa é da latência do fone, não sua.
 
 ## Como funciona
 
@@ -43,3 +52,8 @@ médio" no rodapé e clique em *usar como latência*. Fone Bluetooth costuma ped
   contagem de frames. Esconder a aba suspende o contexto, o que pausa o jogo inteiro
   de forma coerente, de graça.
 - A música é sintetizada em Web Audio (surdo, caixa, agogô, baixo) — não tem mp3.
+  As camadas **respondem ao combo**: com pouco toque na sequência toca só o
+  esqueleto, e vai enchendo conforme você emenda. Derrubou, desmonta.
+- O andamento **acelera** com a dificuldade. Pra isso o mapa batida↔tempo é uma
+  lista de trechos, e um trecho novo só vale a partir do instante dele — assim a
+  batida nunca dá salto na hora em que o BPM muda.
