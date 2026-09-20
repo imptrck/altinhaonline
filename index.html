@@ -547,7 +547,7 @@ function bolaNaParabola(b) {
   const u = clamp((b - a.beat) / dt, 0, 1);
   let arco = Math.min(300, 82 * Math.pow(dt, 1.4));
   if ((a.quem || 0) !== (c.quem || 0)) arco = Math.min(330, arco * 1.5);   // passe cruza mais alto
-  arco = Math.min(arco, (p0.y + p1.y) / 2 - 46);      // nunca sai pelo topo da tela
+  arco = Math.min(arco, (p0.y + p1.y) / 2 - 96);      // nao entra no HUD nem sai pelo topo
   return {
     x: p0.x + (p1.x - p0.x) * u,
     y: p0.y + (p1.y - p0.y) * u - arco * 4 * u * (1 - u),
