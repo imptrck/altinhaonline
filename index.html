@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <title>Altinha</title>
 <style>
   :root{
@@ -11,6 +11,7 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    overscroll-behavior:none;touch-action:manipulation;
     font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
   #wrap{position:relative;width:min(100vw,900px);margin:0 auto;
     height:100%;display:flex;align-items:center;justify-content:center}
@@ -54,6 +55,37 @@
   .botoes{display:flex;gap:10px;margin-top:6px}
   button.sec{background:var(--painel);color:var(--txt);border:1px solid var(--linha)}
   #dica{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--fraco)}
+
+  /* --- controles de toque --- */
+  #touch{display:none;width:100%;gap:6px;padding:6px 6px calc(6px + env(safe-area-inset-bottom));
+    touch-action:none;user-select:none;-webkit-user-select:none}
+  #touch .grupo{display:flex;gap:6px;flex:1}
+  .bt{flex:1;min-height:76px;border-radius:12px;border:1px solid var(--linha);
+    background:var(--painel);color:var(--fraco);font:600 12px ui-sans-serif,system-ui,sans-serif;
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer}
+  .bt.vez{border-color:var(--amarelo);color:var(--amarelo);background:#1d1a10}
+  .bt.longa{border-color:var(--amarelo);color:var(--amarelo);background:#241f0f;
+    box-shadow:0 0 0 2px rgba(227,179,65,.35) inset}
+  .bt.apertado{background:var(--verde);color:#04180a;border-color:var(--verde)}
+  body.temToque #touch{display:flex}
+  body.temToque #dica,
+  body.temToque #calib{display:none}
+  @media (pointer:coarse), (max-width:760px){
+    #wrap{flex-direction:column;justify-content:flex-start;gap:0;height:100dvh}
+    #touch{display:flex}
+    canvas{border-radius:10px;margin-top:auto}
+    /* as duas margens automaticas centram o campo no espaco livre e
+       empurram os botoes pro rodape, que e onde o polegar esta */
+    #touch{margin-top:auto}
+    .bt{min-height:104px;font-size:13px}
+  }
+  @media (orientation:landscape) and (pointer:coarse){
+    canvas{margin-top:0}
+    #touch{position:absolute;left:0;right:0;bottom:0;margin:0;
+      background:linear-gradient(transparent,rgba(13,17,23,.88) 45%)}
+    .bt{min-height:62px;background:rgba(22,27,34,.82)}
+  }
   #mapaTeclas{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:2px 0}
   .bindCol{display:flex;flex-direction:column;align-items:center;gap:5px}
   .bindCol i{font-style:normal;font-size:11px;color:var(--fraco)}
@@ -168,6 +200,7 @@
   </div>
 
   <div id="dica" hidden>esc = opções</div>
+  <div id="touch"></div>
 
   <div id="calib" hidden>
     erro médio: <b id="mediaErro">–</b>
@@ -833,6 +866,7 @@ function quadro(ts) {
   flashes = flashes.filter(f => b - f.b0 < 1.2);
   if (anuncio && b - anuncio.b0 > 2) anuncio = null;
 
+  pintarToque(b);
   if (calib) {
     const f = ((actx.currentTime - calib.t0) / PER_CALIB) % 1;
     calibPonto.style.transform = 'scale(' + (0.55 + Math.max(0, 1 - f * 5) * 0.5).toFixed(3) + ')';
@@ -1639,6 +1673,13 @@ function fecharCalib(usar) {
   salvarOpcoes();
 }
 
+// sem teclado, calibrar precisa aceitar toque na propria tela
+telaCalib.addEventListener('pointerdown', function (e) {
+  if (e.target.closest('button')) return;      // deixa os botoes em paz
+  e.preventDefault();
+  baterCalib();
+});
+
 btCalibOk.addEventListener('click', function () { fecharCalib(true); });
 document.getElementById('btCalibPular').addEventListener('click', function () { fecharCalib(false); });
 document.getElementById('btCalibDeNovo').addEventListener('click', function () {
@@ -1781,6 +1822,80 @@ function quedaDoOutro(m) {
   queda('ele deixou passar', m.beat);
 }
 
+/* --- controles de toque -----------------------------------------------
+   Sem teclado o jogador perde a referencia de QUAL parte do corpo vem
+   agora, entao o botao da vez acende — e acende em dourado quando a nota
+   e longa, que e o mesmo aviso do anel.
+   ---------------------------------------------------------------------- */
+const barraToque = document.getElementById('touch');
+let botoes = [];                    // { el, parte, quem }
+
+function montarToque() {
+  barraToque.innerHTML = '';
+  botoes = [];
+  const grupos = online() ? [meuLado] : ehDupla() ? [0, 1] : [0];
+  const lanes = (ehDupla() || online()) ? LANES_DUPLA : ORDEM_PARTES;
+  grupos.forEach(function (q) {
+    const g = document.createElement('div');
+    g.className = 'grupo';
+    lanes.forEach(function (parte) {
+      const el = document.createElement('div');
+      el.className = 'bt';
+      el.textContent = PARTES[parte].nome;
+      ligarBotao(el, parte, q);
+      g.appendChild(el);
+      botoes.push({ el: el, parte: parte, quem: q });
+    });
+    barraToque.appendChild(g);
+  });
+}
+
+function ligarBotao(el, parte, quem) {
+  el.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    el.classList.add('apertado');
+    if (calib) return baterCalib();
+    pressionar(parte, quem);
+  });
+  const largar = function (e) {
+    e.preventDefault();
+    el.classList.remove('apertado');
+    soltar(parte, quem);
+  };
+  el.addEventListener('pointerup', largar);
+  el.addEventListener('pointercancel', largar);
+  el.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+}
+
+// pinta o botao do que vem agora
+function pintarToque(b) {
+  if (!botoes.length) return;
+  const prox = notaPendente();
+  const av = longaChegando(b);
+  for (let i = 0; i < botoes.length; i++) {
+    const bt = botoes[i];
+    const ehVez = !!(prox && prox.parte === bt.parte && (prox.quem || 0) === bt.quem);
+    const ehLonga = !!(av && av.nota.parte === bt.parte && (av.nota.quem || 0) === bt.quem);
+    bt.el.classList.toggle('vez', ehVez && !ehLonga);
+    bt.el.classList.toggle('longa', ehLonga);
+  }
+}
+
+// rede de seguranca: dedo saindo da tela sem soltar deixaria o botao aceso
+addEventListener('pointerup', function () {
+  for (let i = 0; i < botoes.length; i++) botoes[i].el.classList.remove('apertado');
+});
+addEventListener('blur', function () {
+  for (let i = 0; i < botoes.length; i++) botoes[i].el.classList.remove('apertado');
+});
+
+// qualquer toque na tela liga os controles, mesmo se a deteccao por CSS falhar
+addEventListener('touchstart', function marca() {
+  document.body.classList.add('temToque');
+  removeEventListener('touchstart', marca);
+}, { passive: true });
+
 function prepararPartida(novoModo) {
   if (novoModo) modo = novoModo;
   pontos = 0; combo = 0; melhorCombo = 0; vidas = 3;
@@ -1790,6 +1905,7 @@ function prepararPartida(novoModo) {
   anuncio = null; ultimoJulg = null; errosRec = [];
   tremor = 0; punch = 0; clarao.a = 0; paradoAte = 0;
   cai = { b0: -999, p0: { x: TELA_CX, y: CHAO }, vx: 0 };
+  montarToque();
 }
 
 function comecar(novoModo) {
@@ -1863,6 +1979,7 @@ function copiaNaMarra(txt, ok) {
 
 carregarRecordes();
 atualizarSelo();
+montarToque();
 
 const telaOnline = document.getElementById('telaOnline');
 document.getElementById('btOnline').addEventListener('click', function () {

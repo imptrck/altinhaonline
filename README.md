@@ -6,6 +6,18 @@ esticar pra salvar. Três quedas e acabou.
 
 Jogue: https://imptrck.github.io/altinhaonline/
 
+## No celular
+
+Abra pelo navegador do telefone e os controles aparecem sozinhos: uma fileira
+de botões no **rodapé**, que é onde o polegar está. O botão da vez acende, e
+acende em **dourado** quando a nota é longa — mesmo aviso do anel.
+
+Funciona em retrato (campo em cima, botões embaixo) e em paisagem (botões
+sobrepostos no rodapé). Segurar funciona igual: encoste e mantenha.
+
+A calibragem também aceita toque — sem isso não dava pra calibrar sem teclado,
+e sem calibrar o jogo parece quebrado.
+
 ## Controles
 
 | tecla | parte |
