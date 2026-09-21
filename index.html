@@ -424,7 +424,7 @@ const CX = TELA_CX;
 const PARTES = {
   peE:    { tecla:'a', rot:'A', nome:'pé E',   x:-98, y:470, cor:'#58a6ff', hz:300 },
   coxaE:  { tecla:'s', rot:'S', nome:'coxa E', x:-82, y:338, cor:'#3fb950', hz:380 },
-  peito:  {             rot:'S+K', nome:'peito',  x:  0, y:268, cor:'#7ee0c8', hz:430 },
+  peito:  {             rot:'', nome:'peito',  x:  0, y:268, cor:'#7ee0c8', hz:430 },
   cabeca: { tecla:' ', rot:'␣', nome:'cabeça', x:  0, y:144, cor:'#e3b341', hz:540 },
   coxaD:  { tecla:'k', rot:'K', nome:'coxa D', x: 82, y:338, cor:'#3fb950', hz:380 },
   peD:    { tecla:'l', rot:'L', nome:'pé D',   x: 98, y:470, cor:'#58a6ff', hz:300 },
@@ -500,7 +500,7 @@ function salvarRecordes() {
 function gerar(ate) {
   if (ehDupla()) return gerarDupla(ate);
   while (proxB < ate) {
-    const nivel = Math.min(3, Math.max(0, Math.floor((proxB - 8) / 20)));
+    const nivel = Math.min(3, Math.max(0, Math.floor((proxB - beatInicio) / 20)));
     let pool = LANCES.filter(l => l.dif <= nivel);
     if (!pool.length) pool = LANCES;
     const l = pool[(rnd() * pool.length) | 0];
@@ -580,6 +580,11 @@ let fpsAlvo = 80;   // 40 = economia, 80 = equilibrio, 0 = sem trava
 function sacudir(f) { if (suco.ligado) tremor = Math.max(tremor, f); }
 function piscar(cor, a) { if (suco.ligado && a > clarao.a) { clarao.a = a; clarao.cor = cor; } }
 let segurando = null;   // { quem, parte, tipo, de, ate } enquanto a bola esta presa
+// A partida comeca com a bola no chao esperando voce sacar. beatInicio guarda
+// a batida do saque, e TODA a dificuldade e medida a partir dela — senao quem
+// demora pra sacar comecaria num andamento mais alto que os outros, e o
+// desafio do dia deixaria de ser comparavel.
+let aguardandoSaque = false, beatInicio = 8;
 const perseguir = (de, para, taxa) => de + (para - de) * (1 - Math.exp(-dtQuadro * taxa));
 let ultimoJulg = null;
 
@@ -656,6 +661,10 @@ function faiscar(p, cor, n) {
 function pressionar(parte, quem) {
   quem = quem || 0;
   if (!rodando || segurando) return;
+  if (aguardandoSaque) {                       // bola no chao: qualquer pe saca
+    if (parte === 'peE' || parte === 'peD') sacar(quem);
+    return;
+  }
   const alvo = notaPendente();
   if (!alvo) return;
   if ((alvo.quem || 0) !== quem) return;        // nota nao e sua: ignora
@@ -759,7 +768,7 @@ function toqueNoVazio() {
 
 function queda(motivo, ancora) {
   if (!rodando) return;
-  vidas--; combo = 0; segurando = null;
+  vidas--; combo = 0; segurando = null; aguardandoSaque = false;
   somErro(actx.currentTime);
   torcida(actx.currentTime, 0.85, true);          // "ooooh" da arquibancada
   sacudir(17);
@@ -844,7 +853,7 @@ function quadro(ts) {
 
   if (rodando) {
     // o nivel satura no 3 lá pela batida 68; dai pra frente quem aperta e o andamento
-    bpmAlvo = Math.min(BPM0 + 30, BPM0 + Math.floor(Math.max(0, b - 40) / 28) * 5);
+    bpmAlvo = Math.min(BPM0 + 30, BPM0 + Math.floor(Math.max(0, b - beatInicio - 32) / 28) * 5);
     gerar(b + 24);
     while (notas.length > 3 && notas[1].beat < b - 6) notas.shift();
 
@@ -1139,17 +1148,25 @@ function desenharAlvos(b) {
   const lista = (ehDupla() || online()) ? LANES_DUPLA : LANES_SOLO;
   for (const k of lista) {
     const p = PARTES[k], pt = posParte(k, derivaVis, vez);
-    const ativo = prox && prox.parte === k;
-    const raio = k === 'peito' ? 23 : 17;     // "S+K" nao cabe em 17
+    // Acorde: com nota de peito pendente sao as DUAS COXAS que acendem, na
+    // cor do peito. Um terceiro alvo escrito "S+K" era abstracao no meio de
+    // uma tela que e toda espacial; o gesto e apertar as duas, entao sao elas
+    // que tem que responder. No toque nao vale: la o peito e um botao so.
+    const acorde = !!(prox && prox.parte === 'peito' && !barraToque.offsetParent
+                      && !ehDupla() && !online());
+    const noAcorde = acorde && (k === 'coxaE' || k === 'coxaD');
+    const ativo = (prox && prox.parte === k) || noAcorde;
+    const cor = noAcorde ? PARTES.peito.cor : p.cor;
+    const raio = k === 'peito' ? 19 : 17;
     // Disco escuro POR TRAS. Dois alvos caem sobre o proprio corpo — o peito
     // na camisa amarela (luminancia 195 medida) e o pe na chuteira (156) — e
     // sumiam. Mover seria mentir: e ali que a bola pousa. Faltava fundo.
     ctx.fillStyle = ativo ? 'rgba(8,12,18,.74)' : 'rgba(8,12,18,.56)';
     ctx.beginPath(); ctx.arc(pt.x, pt.y, raio, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = ativo ? p.cor : 'rgba(176,187,201,.45)';
+    ctx.strokeStyle = ativo ? cor : 'rgba(176,187,201,.45)';
     ctx.lineWidth = ativo ? 2.5 : 1.5;
     ctx.beginPath(); ctx.arc(pt.x, pt.y, raio, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = ativo ? p.cor : 'rgba(176,187,201,.75)';
+    ctx.fillStyle = ativo ? cor : 'rgba(176,187,201,.75)';
     ctx.font = '600 12px ui-monospace,monospace';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(p.rot, pt.x, pt.y);
@@ -1158,12 +1175,17 @@ function desenharAlvos(b) {
   if (prox) {
     const faltam = prox.beat - b;
     if (!prox.solta && faltam > -0.4 && faltam < 1.6) {
-      const pt = posParte(prox.parte, derivaVis, prox.quem || 0);
       const r = 17 + clamp(faltam, 0, 1.6) * 44;
-      ctx.strokeStyle = PARTES[prox.parte].cor;
       ctx.globalAlpha = clamp(1 - Math.abs(faltam) / 1.6, 0.15, 1);
       ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2); ctx.stroke();
+      // no acorde o anel fecha nas duas coxas ao mesmo tempo
+      const onde = (prox.parte === 'peito' && !barraToque.offsetParent
+                    && !ehDupla() && !online()) ? ['coxaE', 'coxaD'] : [prox.parte];
+      ctx.strokeStyle = PARTES[prox.parte].cor;
+      onde.forEach(function (k2) {
+        const pt = posParte(k2, derivaVis, prox.quem || 0);
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2); ctx.stroke();
+      });
       ctx.globalAlpha = 1;
     }
   }
@@ -1316,13 +1338,27 @@ function desenharHUD(b) {
     ctx.globalAlpha = 1;
   });
 
-  // contagem antes do primeiro toque
-  if (rodando && b < 8) {
+  // esperando o saque
+  if (rodando && aguardandoSaque) {
+    const pisca = 0.6 + Math.abs(Math.sin(b * Math.PI)) * 0.4;
+    ctx.textAlign = 'center';
+    ctx.globalAlpha = pisca;
+    ctx.fillStyle = '#e6edf3';
+    ctx.font = '800 30px ui-sans-serif,system-ui,sans-serif';
+    ctx.fillText(barraToque.offsetParent ? 'toque num pé pra sacar'
+                                         : 'A ou L pra sacar', TELA_CX, 300);
+    ctx.globalAlpha = pisca * 0.75;
+    ctx.font = '15px ui-sans-serif,system-ui,sans-serif';
+    ctx.fillText('a música já está tocando — saque no tempo', TELA_CX, 330);
+    ctx.globalAlpha = 1;
+  }
+  // contagem do online, que mantem a largada combinada entre os dois
+  if (rodando && !aguardandoSaque && online() && b < 8) {
     const n = Math.ceil(8 - b);
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(230,237,243,.85)';
     ctx.font = '800 64px ui-sans-serif,system-ui,sans-serif';
-    ctx.fillText(n <= 3 ? String(n) : 'prepara', CX, 300);
+    ctx.fillText(n <= 3 ? String(n) : 'prepara', TELA_CX, 300);
   }
 }
 
@@ -1503,7 +1539,6 @@ function aplicarTeclas() {
                   : PARTES[p].tecla.length === 1 ? PARTES[p].tecla.toUpperCase()
                   : PARTES[p].tecla.slice(0, 3);
   }
-  PARTES.peito.rot = rotuloTecla(PARTES.coxaE.tecla) + '+' + rotuloTecla(PARTES.coxaD.tecla);
   ORDEM_PARTES.forEach(function (p) {
     const bt = document.getElementById('bind-' + p);
     if (bt) { bt.textContent = rotuloTecla(PARTES[p].tecla); bt.classList.remove('ouvindo'); }
@@ -1896,6 +1931,7 @@ function arrancarOnline(m) {
   const t0Actx = actx.currentTime + (t0Local - Date.now()) / 1000;
 
   prepararPartida('dupla');
+  aguardandoSaque = false; beatInicio = 8;
   rnd = mulberry32(m.seed >>> 0);
   notas = []; infoLance = {}; idLance = 0; donoAtual = 0;
   proxB = 8;
@@ -2018,6 +2054,23 @@ addEventListener('touchstart', function marca() {
   removeEventListener('touchstart', marca);
 }, { passive: true });
 
+function sacar(quem) {
+  if (!aguardandoSaque || !rodando) return;
+  aguardandoSaque = false;
+  const b = batidaVisual();
+  const primeira = Math.ceil(b + 2.5);          // tempo da bola subir
+  beatInicio = primeira;
+  proxB = primeira;
+  notas = []; infoLance = {}; idLance = 0; donoAtual = quem || 0;
+  rnd = mulberry32(semear(hojeStr()));
+  // fantasma na batida EXATA do toque: a bola sai do pe na hora, nao depois
+  notas.push({ beat: b, parte: 'chao', lance: 0, quem: quem || 0,
+               ultima: false, julgada: true, dx: 0 });
+  gerar(primeira + 24);
+  somToque(actx.currentTime, 240, true);
+  sacudir(4);
+}
+
 function prepararPartida(novoModo) {
   if (novoModo) modo = novoModo;
   pontos = 0; combo = 0; melhorCombo = 0; vidas = 3;
@@ -2046,10 +2099,10 @@ function comecar(novoModo) {
   anuncio = null; ultimoJulg = null; errosRec = [];
 
   rnd = mulberry32(semear(hojeStr()));          // mesma partitura pra todo mundo hoje
-  proxB = 8;                                   // 2 compassos de contagem
-  notas.push({ beat: 6, parte: 'chao', lance: 0, quem: 0,
-               ultima: false, julgada: true, dx: 0 });
-  gerar(32);
+  aguardandoSaque = true;
+  beatInicio = 0;
+  proxB = 1e9;                                 // nada de partitura ate o saque
+  notas = [];                                  // bola no chao, esperando voce
 
   cai = { b0: -999, p0: { x: CX, y: CHAO }, vx: 0 };
   passo = 0;

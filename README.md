@@ -35,7 +35,13 @@ e sem calibrar o jogo parece quebrado.
 | `S`+`K` juntos | **peito** |
 | `Esc` | opções / pausa |
 
-O peito não tem tecla própria: sai apertando **as duas coxas ao mesmo tempo**.
+**A partida começa com a bola no chão**: aperte `A` ou `L` pra sacar, no tempo
+da música, que já está tocando. Não tem contagem regressiva. A dificuldade é
+medida a partir do seu saque, então demorar pra sacar não te dá um jogo mais
+fácil nem mais difícil — o desafio do dia continua comparável.
+
+O peito não tem tecla própria: sai apertando **as duas coxas ao mesmo tempo**,
+e são **as duas marcas das coxas que acendem** quando a bola vem pro peito.
 Ele fica no meio do corpo, então o acorde é espacialmente certo — e não gasta
 tecla nova. Se você remapear as coxas, o acorde acompanha. No celular ele é um
 botão normal, porque lá dois dedos em botões diferentes seria pior.
