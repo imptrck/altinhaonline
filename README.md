@@ -8,9 +8,14 @@ Jogue: https://imptrck.github.io/altinhaonline/
 
 ## No celular
 
-Abra pelo navegador do telefone e os controles aparecem sozinhos: uma fileira
-de botões no **rodapé**, que é onde o polegar está. O botão da vez acende, e
-acende em **dourado** quando a nota é longa — mesmo aviso do anel.
+Abra pelo navegador do telefone e os controles aparecem sozinhos, no **rodapé**,
+que é onde o polegar está. O botão da vez acende, e acende em **dourado** quando
+a nota é longa — mesmo aviso do anel.
+
+Os botões **espelham o corpo**: pés nas pontas e maiores, coxas por dentro,
+peito e cabeça numa coluna central (cabeça em cima, como no corpo). O tamanho
+segue o uso real, medido em 500 batidas de partitura: os pés são 57% dos
+toques, o peito 7%.
 
 Funciona em retrato (campo em cima, botões embaixo) e em paisagem (botões
 sobrepostos no rodapé). Segurar funciona igual: encoste e mantenha.

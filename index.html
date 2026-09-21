@@ -16,8 +16,7 @@
   #wrap{position:relative;width:min(100vw,900px);margin:0 auto;
     height:100%;display:flex;align-items:center;justify-content:center}
   canvas{width:100%;aspect-ratio:900/620;display:block;
-    background:linear-gradient(#0f1622 0%,#101d16 62%,#0c1710 100%);
-    border:1px solid var(--linha);border-radius:12px}
+    background:#0e1320;border:1px solid var(--linha);border-radius:12px}
   .tela{position:absolute;inset:0;display:flex;flex-direction:column;
     align-items:center;justify-content:center;gap:14px;padding:26px;text-align:center;
     background:rgba(8,12,18,.93);border-radius:12px;backdrop-filter:blur(3px)}
@@ -59,10 +58,16 @@
   /* --- controles de toque --- */
   #touch{display:none;width:100%;gap:6px;padding:6px 6px calc(6px + env(safe-area-inset-bottom));
     touch-action:none;user-select:none;-webkit-user-select:none}
-  #touch .grupo{display:flex;gap:6px;flex:1}
+  #touch .grupo{display:flex;gap:6px;flex:1;align-items:stretch}
+  #touch .col{display:flex;flex-direction:column;gap:6px;flex:1.15}
+  /* medido em 500 batidas: pes = 57% dos toques, peito = 7%. Alvo maior
+     pro que mais aparece, e cada botao onde a parte do corpo esta. */
+  .bt.pe{flex:1.5}
+  .bt.coxa{flex:.95}
   .bt{flex:1;min-height:76px;border-radius:12px;border:1px solid var(--linha);
     background:var(--painel);color:var(--fraco);font:600 12px ui-sans-serif,system-ui,sans-serif;
     display:flex;align-items:center;justify-content:center;text-align:center;
+    min-width:0;overflow:hidden;
     touch-action:none;-webkit-tap-highlight-color:transparent;cursor:pointer}
   .bt.vez{border-color:var(--amarelo);color:var(--amarelo);background:#1d1a10}
   .bt.longa{border-color:var(--amarelo);color:var(--amarelo);background:#241f0f;
@@ -78,7 +83,8 @@
     /* as duas margens automaticas centram o campo no espaco livre e
        empurram os botoes pro rodape, que e onde o polegar esta */
     #touch{margin-top:auto}
-    .bt{min-height:104px;font-size:13px}
+    .bt{min-height:74px;font-size:13px}
+    #touch{min-height:166px}
   }
   @media (orientation:landscape) and (pointer:coarse){
     canvas{margin-top:0}
@@ -560,7 +566,8 @@ let deriva = 0, bolaVis = { x: CX, y: CHAO }, rastro = [];
 let cai = { b0: -999, p0: { x: CX, y: CHAO }, vx: 0 };
 let flashes = [], faiscas = [], anuncio = null, alcance = [{}, {}], errosRec = [];
 let agacha = [0, 0], derivaVel = 0, derivaAnt = 0, esmaga = -99, pausado = false;
-let gradBola = null, ultimoQuadro = 0, dtQuadro = 0.016;
+let gradBola = null, gradCeu = null, gradMar = null, gradAreia = null;
+let ultimoQuadro = 0, dtQuadro = 0.016;
 // A deriva LOGICA (deriva) manda no jogo; a VISUAL persegue ela suavemente.
 // Sem isso a bola teleporta de lado a cada toque: o trecho novo da parabola
 // ja comeca na deriva nova enquanto a bola acabou de chegar na antiga.
@@ -1322,14 +1329,55 @@ function desenhar(b) {
     ctx.translate(CX, 360); ctx.scale(1 + punch, 1 + punch); ctx.translate(-CX, -360);
   }
 
-  // gramado: pulsa no tempo forte, e pulsa MAIS quanto maior o combo
+  // Praia de FIM DE TARDE, nao de meio-dia: a bola e branca e so salta em
+  // fundo escuro. Ceu claro tornaria o jogo pior pra enxergar.
+  // Desenhado com folga de 40px porque a tremida de tela desloca tudo isto.
   const pulso = 1 - (b - Math.floor(b));
   calor = Math.min(combo, 40) / 40;
-  ctx.fillStyle = 'rgba(63,185,80,' + (0.05 + pulso * (0.05 + calor * 0.11)).toFixed(3) + ')';
-  ctx.fillRect(0, CHAO, 900, 620 - CHAO);
-  ctx.strokeStyle = 'rgba(63,185,80,.25)';
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(0, CHAO); ctx.lineTo(900, CHAO); ctx.stroke();
+  const MAR = 436;
+
+  if (!gradCeu) {
+    gradCeu = ctx.createLinearGradient(0, -40, 0, MAR);
+    gradCeu.addColorStop(0, '#0d1226');
+    gradCeu.addColorStop(0.45, '#1b1e3a');
+    gradCeu.addColorStop(0.8, '#432f4a');
+    gradCeu.addColorStop(1, '#7a4442');
+  }
+  ctx.fillStyle = gradCeu;
+  ctx.fillRect(-40, -40, 980, MAR + 40);
+
+  // sol baixo, atras do mar
+  ctx.fillStyle = 'rgba(232,140,86,.45)';
+  ctx.beginPath(); ctx.arc(726, MAR - 16, 34, 0, Math.PI * 2); ctx.fill();
+
+  // mar
+  if (!gradMar) {
+    gradMar = ctx.createLinearGradient(0, MAR, 0, CHAO);
+    gradMar.addColorStop(0, '#16344a');
+    gradMar.addColorStop(1, '#0e1c2a');
+  }
+  ctx.fillStyle = gradMar;
+  ctx.fillRect(-40, MAR, 980, CHAO - MAR);
+  ctx.fillStyle = 'rgba(232,170,120,.30)';
+  ctx.fillRect(700, MAR, 52, 2);                       // reflexo do sol
+  ctx.strokeStyle = 'rgba(190,215,230,' + (0.05 + pulso * (0.04 + calor * 0.09)).toFixed(3) + ')';
+  ctx.lineWidth = 1.5;
+  for (let i = 1; i <= 4; i++) {
+    const y = MAR + i * (CHAO - MAR) / 5;
+    ctx.beginPath(); ctx.moveTo(-40, y); ctx.lineTo(940, y); ctx.stroke();
+  }
+
+  // areia
+  if (!gradAreia) {
+    gradAreia = ctx.createLinearGradient(0, CHAO, 0, 660);
+    gradAreia.addColorStop(0, '#5a4635');
+    gradAreia.addColorStop(1, '#33281e');
+  }
+  ctx.fillStyle = gradAreia;
+  ctx.fillRect(-40, CHAO, 980, 660 - CHAO);
+  // espuma na beira, pulsando no tempo
+  ctx.fillStyle = 'rgba(226,235,240,' + (0.10 + pulso * (0.06 + calor * 0.12)).toFixed(3) + ')';
+  ctx.fillRect(-40, CHAO - 3, 980, 4);
 
   desenharAlvos(b);
   if (ehDupla()) {
@@ -1874,22 +1922,42 @@ function quedaDoOutro(m) {
 const barraToque = document.getElementById('touch');
 let botoes = [];                    // { el, parte, quem }
 
+function botaoDe(parte, quem, classe) {
+  const el = document.createElement('div');
+  el.className = 'bt' + (classe ? ' ' + classe : '');
+  el.textContent = PARTES[parte].nome;
+  ligarBotao(el, parte, quem);
+  botoes.push({ el: el, parte: parte, quem: quem });
+  return el;
+}
+
+// A fileira igual estava errada duas vezes: dava o mesmo alvo pro pe (28%
+// dos toques) e pro peito (7%), e jogava a CABECA no meio, que e justo onde
+// polegar nenhum alcanca bem. Agora o teclado espelha o corpo — pes nas
+// pontas e maiores, coxas por dentro, peito e cabeca numa coluna central
+// curta que os dois polegares pegam.
 function montarToque() {
   barraToque.innerHTML = '';
   botoes = [];
   const grupos = online() ? [meuLado] : ehDupla() ? [0, 1] : [0];
-  const lanes = (ehDupla() || online()) ? LANES_DUPLA : LANES_SOLO;
   grupos.forEach(function (q) {
     const g = document.createElement('div');
     g.className = 'grupo';
-    lanes.forEach(function (parte) {
-      const el = document.createElement('div');
-      el.className = 'bt';
-      el.textContent = PARTES[parte].nome;
-      ligarBotao(el, parte, q);
-      g.appendChild(el);
-      botoes.push({ el: el, parte: parte, quem: q });
-    });
+    if (ehDupla() || online()) {
+      g.appendChild(botaoDe('peE', q, 'pe'));
+      g.appendChild(botaoDe('cabeca', q, ''));
+      g.appendChild(botaoDe('peD', q, 'pe'));
+    } else {
+      g.appendChild(botaoDe('peE', q, 'pe'));
+      g.appendChild(botaoDe('coxaE', q, 'coxa'));
+      const col = document.createElement('div');
+      col.className = 'col';
+      col.appendChild(botaoDe('cabeca', q, ''));     // cabeca em cima,
+      col.appendChild(botaoDe('peito', q, ''));      // peito embaixo: como no corpo
+      g.appendChild(col);
+      g.appendChild(botaoDe('coxaD', q, 'coxa'));
+      g.appendChild(botaoDe('peD', q, 'pe'));
+    }
     barraToque.appendChild(g);
   });
 }
