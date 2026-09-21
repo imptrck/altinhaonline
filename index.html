@@ -1140,10 +1140,16 @@ function desenharAlvos(b) {
   for (const k of lista) {
     const p = PARTES[k], pt = posParte(k, derivaVis, vez);
     const ativo = prox && prox.parte === k;
-    ctx.strokeStyle = ativo ? p.cor : 'rgba(139,148,158,.32)';
+    const raio = k === 'peito' ? 23 : 17;     // "S+K" nao cabe em 17
+    // Disco escuro POR TRAS. Dois alvos caem sobre o proprio corpo — o peito
+    // na camisa amarela (luminancia 195 medida) e o pe na chuteira (156) — e
+    // sumiam. Mover seria mentir: e ali que a bola pousa. Faltava fundo.
+    ctx.fillStyle = ativo ? 'rgba(8,12,18,.74)' : 'rgba(8,12,18,.56)';
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, raio, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = ativo ? p.cor : 'rgba(176,187,201,.45)';
     ctx.lineWidth = ativo ? 2.5 : 1.5;
-    ctx.beginPath(); ctx.arc(pt.x, pt.y, 17, 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = ativo ? p.cor : 'rgba(139,148,158,.5)';
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, raio, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = ativo ? p.cor : 'rgba(176,187,201,.75)';
     ctx.font = '600 12px ui-monospace,monospace';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(p.rot, pt.x, pt.y);
@@ -1379,12 +1385,16 @@ function desenhar(b) {
   ctx.fillStyle = 'rgba(226,235,240,' + (0.10 + pulso * (0.06 + calor * 0.12)).toFixed(3) + ')';
   ctx.fillRect(-40, CHAO - 3, 980, 4);
 
-  desenharAlvos(b);
   if (ehDupla()) {
     const prox = notaPendente();
     const vez = prox ? (prox.quem || 0) : -1;
     for (let q = 0; q < 2; q++) desenharJogador(b, q, !(vez === -1 || vez === q));
   } else desenharJogador(b, 0, false);
+
+  // Alvos DEPOIS do jogador. Antes vinham antes, e o corpo pintava por cima —
+  // o do peito sumia inteiro embaixo da camisa. Era isso que parecia
+  // "colocacao ruim": eles sao interface, tem que ficar por cima.
+  desenharAlvos(b);
 
   // rastro
   ctx.fillStyle = '#e6edf3';
